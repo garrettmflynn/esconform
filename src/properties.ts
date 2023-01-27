@@ -32,7 +32,7 @@ const globalObjects = [
 
 export function getAllPropertyNames( obj: any ) {
 
-    var props: string[] = [];
+    var props: (string | number)[] = [];
     if (obj) {
         do {
 

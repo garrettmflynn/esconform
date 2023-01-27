@@ -79,19 +79,42 @@
   var registerAllProperties = (o, specObject, funcs = {}, path = [], history = [], acc = {}) => {
     if (history.length === 0)
       history.push(o);
-    const properties = [...getAllPropertyNames(o), ...Object.getOwnPropertySymbols(o)];
-    properties.forEach((key) => registerPropertyUpdate(key, path, history, acc, funcs, specObject));
-    return acc;
+    const properties = /* @__PURE__ */ new Set([...getAllPropertyNames(o), ...Object.getOwnPropertySymbols(o)]);
+    const specKeys = /* @__PURE__ */ new Set([...getAllPropertyNames(specObject), ...Object.getOwnPropertySymbols(specObject)]);
+    const registeredProperties = new Set(specKeys);
+    const register = (key) => {
+      const registered = registerPropertyUpdate(key, path, history, acc, funcs, specObject);
+      registered.forEach((key2) => {
+        specKeys.delete(key2);
+        registeredProperties.add(key2);
+      });
+    };
+    properties.forEach(register);
+    specKeys.forEach(register);
+    let toReturn = acc;
+    if (globalThis.Proxy) {
+      toReturn = new Proxy(acc, {
+        set(target, property, value2) {
+          if (registeredProperties.has(property))
+            target[property] = value2;
+        }
+      });
+    } else
+      console.warn("[esmodel] Proxy not available. Unregistered property setters will not be intercepted.");
+    return toReturn;
   };
   var registerPropertyUpdate = (key, path, history, acc, funcs, specObject = {}, linked = false) => {
     const parent = history[history.length - 1];
     const updatedPath = [...path, key];
     let resolved = unresolved;
+    let registered = [];
     const update = funcs.keys ? funcs.keys(key, specObject, path, history) : key;
     const isObject = update && typeof update === "object";
-    if (isObject && update.links)
-      update.links.forEach((o) => {
+    const links = isObject ? update.links : void 0;
+    if (links) {
+      for (let o of links) {
         const parentCopy = history[history.length - 1] = { ...parent };
+        registered.push(o.key);
         if (typeof o.update === "function") {
           let getter2 = function() {
             const res = "value" in o ? o.value : resolved !== unresolved ? resolved : parent[key];
@@ -113,12 +136,17 @@
         } else
           parentCopy[o.key] = o.value;
         registerPropertyUpdate(o.key, path, history, acc, funcs, specObject, true);
-      });
+      }
+    }
     const enumerable = isObject ? update.enumerable === false ? false : true : true;
     const _update = isObject ? update.value : update;
     const type = typeof _update;
     const silence = _update == void 0 || _update === removeSymbol || type !== "string" && type !== "symbol";
     const resolvedKey = silence ? key : _update;
+    if (silence && !links)
+      return registered;
+    else
+      registered.push(resolvedKey);
     const desc = { ...Object.getOwnPropertyDescriptor(parent, key) };
     delete desc.value;
     delete desc.writable;
@@ -143,10 +171,11 @@
         return setter(value2);
       } : setter,
       enumerable: silence ? false : enumerable,
-      configurable: true
+      configurable: false
     });
     if (key !== resolvedKey)
       delete acc[key];
+    return registered;
   };
   var onValueUpdate = (value2, parent, path, history, funcs, specValue) => {
     const key = path[path.length - 1];
@@ -266,7 +295,12 @@
   // demos/advanced.ts
   console.log("---------------- ADVANCED DEMO ----------------");
   var model2 = new Model({
-    values: (key, value2, spec) => value2,
+    values: (key, value2, spec) => {
+      if (value2 && spec === "isodatetime")
+        return new Date(value2).toISOString();
+      else
+        return value2;
+    },
     keys: (key, spec) => {
       const specVal = spec[key];
       let info = {
@@ -290,7 +324,8 @@
       address: {
         type: "string",
         enumerable: false
-      }
+      },
+      dateOfBirth: "isodatetime"
     }
   });
   var person = {
@@ -302,12 +337,18 @@
   var john = model2.apply(person);
   console.log("John", john);
   console.log("Data", person);
-  console.log(john.firstName);
-  console.log(john.lastName);
-  console.log(john.fullName);
-  console.log(john.extra);
+  console.log("firstName", john.firstName);
+  console.log("lastName", john.lastName);
+  console.log("fullName", john.fullName);
+  console.log("extra", john.extra, "extra" in john);
+  john.extra = "TEST";
+  console.log("extra", john.extra, "extra" in john);
   john.fullName = "Jane Doe";
-  console.log(john.firstName);
-  console.log(john.lastName);
-  console.log(john.fullName);
+  console.log("firstName", john.firstName);
+  console.log("lastName", john.lastName);
+  console.log("fullName", john.fullName);
+  var dob = new Date("1990-01-01");
+  console.log("DoB", dob);
+  john.dateOfBirth = dob;
+  console.log("DoB", john.dateOfBirth);
 })();

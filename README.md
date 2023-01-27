@@ -2,6 +2,8 @@
  `esmodel`  is a JavaScript library that allows you to conform JavaScript objects to an external model. 
 
  It allows you to transform the **keys** of an object, then uses `setters` to ensure that updated **values** to the output object are transformed. Both transformation functions can use an external **specification** to determine the validity of the transformation.
+
+ All values besides **null** and **undefined** are transformed to their corresponding JavaScript Objects (e.g. this 'string' will be transformed into a new String('string')).
  
  ### Usage
 
@@ -51,16 +53,29 @@ const person = {
 }
 
 const john = model.apply(person)
-console.log(john.firstName) // John
-console.log(john.lastName) // Doe
-console.log(john.fullName) // undefined
-console.log(john.extra) // undefined
 
+// Properties are transformed based on the specification
+console.log('firstName', john.firstName) // Result: John
+console.log('lastName', john.lastName) // Result: Doe
+console.log('fullName', john.fullName) // Result: undefined
+
+// Properties that are out of the specification are not set
+console.log('extra', john.extra, 'extra' in john) // Result: undefined, false
+
+// Properties that are out of the specification will also be blocked
+john.extra = 'TEST' // Silenced by Proxy
+console.log('extra', john.extra, 'extra' in john) // Result Still: undefined, false
+
+// Linked properties will respond to each other (even if the original key is not in the specification)
 john.fullName = 'Jane Doe'
-console.log(john.firstName) // Jane
-console.log(john.lastName) // Doe
-console.log(john.fullName) // undefined
-```
+console.log('firstName', john.firstName) // Result: Jane
+console.log('lastName', john.lastName) // Result: Doe
+console.log('fullName', john.fullName) // Result: undefined
 
-## Limitations
-1. Since we are not using the `Proxy` object, we cannot react to new properties being added to the object.
+// Properties that are originally missing but present in the specification will be processed
+const dob = new Date('1990-01-01')
+console.log('DoB', dob) // Result: Sun Dec 31 1989 16:00:00 GMT-0800 (Pacific Standard Time)
+john.dateOfBirth = dob
+console.log('DoB', john.dateOfBirth) // Result: Sun Dec 31 1989 16:00:00 GMT-0800 (Pacific Standard Time)
+
+```

@@ -7,11 +7,41 @@ export const isPromise = (o: any) => o && typeof o === 'object' && typeof o.then
 
 const unresolved = Symbol('unresolved')
 
-const registerAllProperties = (o, specObject, funcs: UpdateFunctions = {}, path: PathType = [], history: HistoryType = [], acc: ArbitraryObject = {}) => {
+const register = () => {
+
+}
+
+const registerAllProperties = (o, specObject: ArbitraryObject, funcs: UpdateFunctions = {}, path: PathType = [], history: HistoryType = [], acc: ArbitraryObject = {}) => {
     if (history.length === 0) history.push(o) // Add original object to history
-    const properties = [...getAllPropertyNames(o), ...Object.getOwnPropertySymbols(o)] // Get all properties, enumerable or otherwise
-    properties.forEach(key => registerPropertyUpdate(key, path, history, acc, funcs, specObject)) // Immediate property update
-    return acc
+    const properties = new Set([...getAllPropertyNames(o), ...Object.getOwnPropertySymbols(o)]) // Get all properties, enumerable or otherwise
+    const specKeys = new Set([...getAllPropertyNames(specObject), ...Object.getOwnPropertySymbols(specObject)])
+
+    const registeredProperties = new Set(specKeys)
+
+    const register = (key: KeyType) => {
+        const registered = registerPropertyUpdate(key, path, history, acc, funcs, specObject)
+        registered.forEach(key => {
+            specKeys.delete(key)
+            registeredProperties.add(key)
+        })
+    }
+
+    properties.forEach(register) // Try to register properties provided by the user
+    specKeys.forEach(register) // Register extra specification properties
+
+    let toReturn = acc
+
+    // If Proxy is available, use it to intercept property setters
+    if (globalThis.Proxy) {
+        toReturn = new Proxy(acc, {
+            set(target, property, value) {
+                if (registeredProperties.has(property)) target[property] = value // Only set registered properties
+                // else console.error('Not setting', property)
+            },
+        })
+    } else console.warn('[esmodel] Proxy not available. Unregistered property setters will not be intercepted.')
+
+    return toReturn
 }
 
 // Spit out an object with getters / setters that transform the returned value
@@ -21,6 +51,8 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
     const updatedPath = [...path, key]
     let resolved: any = unresolved
 
+    let registered: KeyType[] = [] // A list of keys that have been registered
+
     // const value = parent[key]
 
     // Resolve any changes to the key
@@ -28,38 +60,44 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
 
     const isObject = (update && typeof update  === 'object')
 
+    const links = isObject ? update.links : undefined
     // Add additional keys to the resulting object
-    if (isObject && update.links) update.links.forEach(o => {
-        const parentCopy = history[history.length - 1] = {...parent}
+    if (links) {
+        for (let o of links) {
 
-        // Link the new property to the parent
-        if (typeof o.update === 'function') {
-            let value: any = unresolved
+            const parentCopy = history[history.length - 1] = {...parent} // Copy the parent object to avoid adding new keys
 
-            const onUpdate = o.update
+            registered.push(o.key)
 
-            function getter() {
-                const res = 'value' in o ? o.value : (resolved !== unresolved) ? resolved : parent[key] // Getting parent value
-                value = isPromise(res) ? res.then(setter) : setter(res)
-                return onUpdate(value)
-            }
+            // Link the new property to the parent
+            if (typeof o.update === 'function') {
+                let value: any = unresolved
 
-            function setter(value) {
-                value = onValueUpdate(value, acc, [...path, o.key], history, funcs, specObject[o.key])
-                return value
-            }
+                const onUpdate = o.update
 
-            Object.defineProperty(parentCopy, o.key, {
-                get: getter, // Transform from parent 
-                set: (v) => {
-                    value = v
+                function getter() {
+                    const res = 'value' in o ? o.value : (resolved !== unresolved) ? resolved : parent[key] // Get original parent value
+                    value = isPromise(res) ? res.then(setter) : setter(res)
+                    return onUpdate(value)
+                }
+
+                function setter(value) {
+                    value = onValueUpdate(value, acc, [...path, o.key], history, funcs, specObject[o.key])
                     return value
                 }
-            })
-        } else parentCopy[o.key] = o.value
-        
-        registerPropertyUpdate(o.key, path, history, acc, funcs, specObject, true)
-    })
+
+                Object.defineProperty(parentCopy, o.key, {
+                    get: getter, // Transform from parent 
+                    set: (v) => {
+                        value = v
+                        return value
+                    }
+                })
+            } else parentCopy[o.key] = o.value
+            
+            registerPropertyUpdate(o.key, path, history, acc, funcs, specObject, true)
+        }
+    }
 
     const enumerable = isObject ? (update.enumerable === false ? false : true) : true
     const _update = isObject ? update.value : update
@@ -68,7 +106,11 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
     // Allow for ignoring a property (including current and previous values)
     const silence = (_update == undefined || _update === removeSymbol || ( type !== 'string' && type !== 'symbol')) 
 
+
     const resolvedKey = (silence) ? key : _update
+
+    if (silence && !links) return registered
+     else registered.push(resolvedKey)
 
     // Set a hidden setter so that updates to the property conform to the model
     const desc = {...Object.getOwnPropertyDescriptor(parent, key)} as PropertyDescriptor
@@ -100,12 +142,13 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
             return setter(value);
         } : setter,
         enumerable: silence ? false : enumerable,
-        configurable: true // This will be reset multiple times
+        configurable: false
     })
 
     // Delete old key
     if (key !== resolvedKey) delete acc[key] 
 
+    return registered // return an array of registered keys
 }
 
 const onValueUpdate = (value: any, parent: ArbitraryObject, path: PathType, history: HistoryType, funcs: UpdateFunctions, specValue: any) => {
