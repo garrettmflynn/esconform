@@ -1,5 +1,7 @@
-import { removeSymbol } from "./globals"
+import { removeSymbol, valueSymbol } from "./globals"
+import { objectify } from "./presets"
 import { getAllPropertyNames } from "./properties"
+import { transfer } from "./transfer"
 import { ArbitraryObject, HistoryType, InternalMetadata, KeyType, PathType, RegistrationOptions, UpdateFunctions } from "./types"
 
 export const isPromise = (o: any) => o && typeof o === 'object' && typeof o.then === 'function'
@@ -120,7 +122,14 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
 
     // Set a hidden setter so that updates to the property conform to the model
     function setter(value) {
+        const original = resolved
         resolved = onValueUpdate(resolvedKey, value, updatedPath, history, funcs, specObject, options, internalMetadata)
+        if (valueSymbol in resolved) {
+            const copy = transfer({}, original)
+            delete copy[valueSymbol]
+            transfer(resolved, copy)
+        }
+        if (valueSymbol in resolved) return resolved[valueSymbol] // return actual value (null / undefined)
         return resolved
     }
 
@@ -131,7 +140,10 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
             const value = mutate ? (desc.get ? desc.get.call(parent) : desc.value) : parent[key]
             return isPromise(value) ? value.then(setter) : setter(value)
         }
-        else return resolved
+        else {
+            if (valueSymbol in resolved) return resolved[valueSymbol] // return actual value (null / undefined)
+            return resolved
+        }
     }
 
     // Enhanced getter and setter based on existing property descriptor
@@ -168,9 +180,7 @@ const onValueUpdate = (resolvedKey: KeyType, value: any, path: PathType, history
         typeof resolved === 'symbol' ? resolved // Don't clone symbols
         : isObject ? {...resolved}  // Clone objects
             : (Array.isArray(resolved) ? [...resolved] // Clone arrays
-                : ((resolved?.constructor) ? new resolved.constructor(resolved) // Try cloning other objects using their constructor
-                    : resolved // Just return the updated value
-                )
+                : objectify(resolvedKey, resolved) // Convert primitives to objects
             )
         )
 

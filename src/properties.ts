@@ -1,6 +1,8 @@
 
 // ------------ Get All Property Names ------------
 
+import { KeyType } from "./types";
+
 const rawProperties = {}
 const globalObjects = [
     'Object', 
@@ -46,30 +48,9 @@ export function getAllPropertyNames( obj: any ) {
                 if (isGlobalObject && rawProperties[name].includes(prop)) return; // Skip inbuilt class prototypes
                 if ( props.indexOf( prop ) === -1 ) props.push( prop )
             });
+            
         } while ( obj = Object.getPrototypeOf( obj ));
     }
 
     return props;
 }
-
-// Create an object from a value. Since some of the standard class properties may be overwritten, we have to create an extended class.
-export const objectify = (value: any) => {
-    const typeOf = typeof value
-    let resolvedValue: String | Number | Boolean | Object = value
-    if (typeOf === 'string') resolvedValue = new String(resolvedValue)
-    else if (typeOf === 'number') resolvedValue = new Number(resolvedValue)
-    else if (typeOf === 'boolean') resolvedValue = new Boolean(resolvedValue)
-    return resolvedValue
-}
-
-
-// // Extend a base classes
-// export const extend = (name, baseClass) => {
-//     return {
-//         [name]: class cls extends baseClass {
-//                 constructor(...args) {
-//                     super(...args)
-//                 }
-//             }
-//     }[name]
-// }

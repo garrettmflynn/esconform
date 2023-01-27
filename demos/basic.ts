@@ -1,4 +1,4 @@
-import { Model, presets } from "../src"
+import { Model, presets, transfer } from "../src"
 
 const symbol = Symbol('symbol')
 const object = {
@@ -31,8 +31,14 @@ const specification = {
     Number: true,
     String: true,
     Boolean: true,
+    
+    // Commenting this breaks
     Object: {
         Boolean: true
+    },
+
+    Undefined: {
+        type: 'any'
     }
 } as any
 
@@ -50,7 +56,14 @@ define('promise', (value) => {
 const model = new Model({
 
     // Transform values to objects
-    values: presets.objectify,
+    values: (key, value, spec) => {
+        const o = presets.objectify(key, value)
+
+        // Testing the addition of metadata to a null object
+        if (spec?.type) return transfer(o, spec, {enumerable: false})
+        // else 
+        return o
+    },
 
     // Transform keys to uppercase
     keys: (key, spec) => {
@@ -124,3 +137,8 @@ const checkPromise = async () => {
     console.log('Promise value (after)', await output.Promise)
 }
 checkPromise()
+
+console.log('--------- Setting undefined ---------')
+console.log('Undefined value (before)', output.Undefined)
+output.Undefined = 'should have metadata'
+console.log('Undefined value (after)',output.Undefined)

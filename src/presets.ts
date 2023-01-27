@@ -1,18 +1,23 @@
 import { valueSymbol } from "./globals"
+import { getAllPropertyNames } from "./properties"
+import { transfer } from "./transfer"
 
 export const objectify = (key, value) => {
+    const constructor = value?.constructor
+    const copy =  constructor || !value
+    if (copy){
+        if (constructor) {
+            let og = value
+            value = new constructor(value) // Try cloning other objects using their constructor
+            value = transfer(value, og)
+        } else if (!value) {
+            const og = value
+            value = Object.create(null)
+            Object.defineProperty(value, valueSymbol, { value: og })
+        }
 
-    const typeOf = typeof value
-    let resolvedValue: String | Number | Boolean | Object = value
-
-    if (typeOf === 'string') resolvedValue = new String(value)
-    else if (typeOf === 'number') resolvedValue = new Number(value)
-    else if (typeOf=== 'boolean') resolvedValue = new Boolean(value)
-    else if (!value) {
-        const og = value
-        resolvedValue = Object.create(null)
-        Object.defineProperty(resolvedValue, valueSymbol, { value: og })
+        console.log('value', value)
     }
 
-    return resolvedValue
+    return value
 }

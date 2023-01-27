@@ -14,22 +14,6 @@
   __export(presets_exports, {
     objectify: () => objectify
   });
-  var objectify = (key, value) => {
-    const typeOf = typeof value;
-    let resolvedValue = value;
-    if (typeOf === "string")
-      resolvedValue = new String(value);
-    else if (typeOf === "number")
-      resolvedValue = new Number(value);
-    else if (typeOf === "boolean")
-      resolvedValue = new Boolean(value);
-    else if (!value) {
-      const og = value;
-      resolvedValue = /* @__PURE__ */ Object.create(null);
-      Object.defineProperty(resolvedValue, valueSymbol, { value: og });
-    }
-    return resolvedValue;
-  };
 
   // src/properties.ts
   var rawProperties = {};
@@ -80,6 +64,37 @@
     }
     return props;
   }
+
+  // src/transfer.ts
+  var transfer = (o, toTransfer, descOverride) => {
+    const properties = /* @__PURE__ */ new Set([...getAllPropertyNames(toTransfer), ...Object.getOwnPropertySymbols(toTransfer)]);
+    properties.forEach((key) => {
+      if (!(key in o)) {
+        const desc = Object.getOwnPropertyDescriptor(toTransfer, key);
+        Object.defineProperty(o, key, descOverride ? { ...desc, ...descOverride } : desc);
+      }
+    });
+    return o;
+  };
+
+  // src/presets.ts
+  var objectify = (key, value) => {
+    const constructor = value?.constructor;
+    const copy = constructor || !value;
+    if (copy) {
+      if (constructor) {
+        let og = value;
+        value = new constructor(value);
+        value = transfer(value, og);
+      } else if (!value) {
+        const og = value;
+        value = /* @__PURE__ */ Object.create(null);
+        Object.defineProperty(value, valueSymbol, { value: og });
+      }
+      console.log("value", value);
+    }
+    return value;
+  };
 
   // src/transformations.ts
   var isPromise = (o) => o && typeof o === "object" && typeof o.then === "function";
@@ -162,7 +177,15 @@
     } else
       registered.push(resolvedKey);
     function setter(value) {
+      const original = resolved;
       resolved = onValueUpdate(resolvedKey, value, updatedPath, history, funcs, specObject, options, internalMetadata);
+      if (valueSymbol in resolved) {
+        const copy = transfer({}, original);
+        delete copy[valueSymbol];
+        transfer(resolved, copy);
+      }
+      if (valueSymbol in resolved)
+        return resolved[valueSymbol];
       return resolved;
     }
     function getter() {
@@ -171,8 +194,11 @@
       else if (resolved === unresolved || internalMetadata.linked) {
         const value = mutate ? desc.get ? desc.get.call(parent) : desc.value : parent[key];
         return isPromise(value) ? value.then(setter) : setter(value);
-      } else
+      } else {
+        if (valueSymbol in resolved)
+          return resolved[valueSymbol];
         return resolved;
+      }
     }
     if (!mutate || desc?.configurable !== false) {
       Object.defineProperty(acc, resolvedKey, {
@@ -196,7 +222,7 @@
     const updateIsObject = update && typeof update === "object";
     const resolved = updateIsObject && "value" in update ? update.value : update;
     const isObject = resolved && resolved?.constructor?.name === "Object";
-    const clone = typeof resolved === "symbol" ? resolved : isObject ? { ...resolved } : Array.isArray(resolved) ? [...resolved] : resolved?.constructor ? new resolved.constructor(resolved) : resolved;
+    const clone = typeof resolved === "symbol" ? resolved : isObject ? { ...resolved } : Array.isArray(resolved) ? [...resolved] : objectify(resolvedKey, resolved);
     if (isObject)
       registerAllProperties(clone, specValue, funcs, options, path, [...history, value]);
     return clone;
@@ -213,16 +239,8 @@
         this.config = config;
         const spec = this.config.specification;
         if (Array.isArray(spec)) {
-          console.log("OG Specs", spec);
           let acc = this.config.specification = {};
-          spec.forEach((o) => {
-            const properties = /* @__PURE__ */ new Set([...getAllPropertyNames(o), ...Object.getOwnPropertySymbols(o)]);
-            properties.forEach((key) => {
-              if (!(key in acc))
-                Object.defineProperty(acc, key, Object.getOwnPropertyDescriptor(o, key));
-            });
-          });
-          console.log("New Spec", this.config.specification);
+          spec.forEach((o) => transfer(acc, o));
         }
       };
       this.apply = (o, options) => apply(o, this.config.specification, this.config, options);
@@ -256,6 +274,9 @@
     Boolean: true,
     Object: {
       Boolean: true
+    },
+    Undefined: {
+      type: "any"
     }
   };
   var define = (name, get) => {
@@ -267,7 +288,12 @@
     return new Promise((resolve) => setTimeout(() => resolve(value), 1e3));
   });
   var model = new Model({
-    values: presets_exports.objectify,
+    values: (key, value, spec) => {
+      const o = presets_exports.objectify(key, value);
+      if (spec?.type)
+        return transfer(o, spec, { enumerable: false });
+      return o;
+    },
     keys: (key, spec) => {
       if (typeof key === "string")
         key = key[0].toUpperCase() + key.slice(1);
@@ -322,6 +348,10 @@
     console.log("Promise value (after)", await output.Promise);
   };
   checkPromise();
+  console.log("--------- Setting undefined ---------");
+  console.log("Undefined value (before)", output.Undefined);
+  output.Undefined = "should have metadata";
+  console.log("Undefined value (after)", output.Undefined);
 
   // demos/advanced.ts
   console.log("---------------- ADVANCED DEMO ----------------");

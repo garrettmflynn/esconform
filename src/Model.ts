@@ -1,4 +1,4 @@
-import { getAllPropertyNames } from './properties'
+import { transfer } from './transfer'
 import * as transformations from './transformations'
 import { ArbitraryObject, RegistrationOptions, UpdateFunctions } from './types'
 
@@ -21,16 +21,8 @@ export class Model {
         // Merge top level of the specification arrays
         const spec = this.config.specification
         if (Array.isArray(spec)) {
-            console.log('OG Specs', spec)
             let acc = this.config.specification = {}
-
-            spec.forEach(o => {
-                const properties = new Set([...getAllPropertyNames(o), ...Object.getOwnPropertySymbols(o)])
-                properties.forEach(key => {
-                    if (!(key in acc)) Object.defineProperty(acc, key, Object.getOwnPropertyDescriptor(o, key) as PropertyDescriptor)
-                })
-            })
-            console.log('New Spec', this.config.specification)
+            spec.forEach(o => transfer(acc, o))
         }
     }
 
