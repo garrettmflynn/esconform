@@ -1,12 +1,7 @@
-# esmodel
- `esmodel`  is a JavaScript library that allows you to conform JavaScript objects to an external model. 
+import { Model } from "../src"
 
- It allows you to transform the **keys** of an object, then uses `setters` to ensure that updated **values** to the output object are transformed. Both transformation functions can use an external **specification** to determine the validity of the transformation.
- 
- ### Usage
-
- ```js
-const newModel = new Model({
+console.log('---------------- ADVANCED DEMO ----------------')
+const model = new Model({
 
     values: (key, value, spec) => value,
 
@@ -14,12 +9,12 @@ const newModel = new Model({
 
         const specVal = spec[key]
 
-        let info = {
-            value: key, // Specify the new key
-            enumerable: specVal?.enumerable ?? true // Specify enumerability
+        let info: any = {
+            value: key,
+            enumerable: specVal?.enumerable ?? true // Specify the enumerability of the keys
         }
 
-        // Specify links to the new key
+        // Create two new keys
         if (key === 'fullName') {
             info.links = [
                 {key: 'firstName', update: (value) => value.split(' ')[0]}, 
@@ -27,12 +22,13 @@ const newModel = new Model({
             ]
         }
 
-        if (!(key in spec)) delete info.value // Silence key if not in spec
+        if (!(key in spec)) delete info.value // Will be removed
 
         return info
     },
 
     specification: {
+        // fullName: 'string',
         firstName: 'string',
         lastName: 'string',
         age: 'number',
@@ -51,16 +47,15 @@ const person = {
 }
 
 const john = model.apply(person)
+console.log('John', john)
+console.log('Data', person)
+
 console.log(john.firstName) // John
 console.log(john.lastName) // Doe
-console.log(john.fullName) // undefined
+console.log(john.fullName) // John Doe
 console.log(john.extra) // undefined
 
 john.fullName = 'Jane Doe'
 console.log(john.firstName) // Jane
 console.log(john.lastName) // Doe
-console.log(john.fullName) // undefined
-```
-
-## Limitations
-1. Since we are not using the `Proxy` object, we cannot react to new properties being added to the object.
+console.log(john.fullName) // Jane Doe

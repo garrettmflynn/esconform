@@ -1,0 +1,30 @@
+{
+  "name": "esmodel",
+  "version": "0.0.0",
+  "description": " Conform JavaScript objects to an external model",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "tinybuild",
+    "build": "tinybuild build",
+    "serve": "tinybuild serve"
+  },
+  "keywords": [
+    "esbuild"
+  ],
+  "author": "",
+  "license": "AGPL-3.0-or-later",
+  "dependencies": {},
+  "devDependencies": {
+    "tinybuild": "^0.3.169"
+  },
+  "nodemonConfig": {
+    "env": {
+      "NODEMON": true
+    },
+    "ignore": [
+      "dist/",
+      ".temp/"
+    ]
+  }
+}
