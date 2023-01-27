@@ -1,13 +1,18 @@
 import { valueSymbol } from "./globals"
 
-// The library already transforms everything except undefined / null
 export const objectify = (key, value) => {
 
-    if (value == undefined) {
+    const typeOf = typeof value
+    let resolvedValue: String | Number | Boolean | Object = value
+
+    if (typeOf === 'string') resolvedValue = new String(value)
+    else if (typeOf === 'number') resolvedValue = new Number(value)
+    else if (typeOf=== 'boolean') resolvedValue = new Boolean(value)
+    else if (!value) {
         const og = value
-        value = Object.create(null)
-        Object.defineProperty(value, valueSymbol, { value: og })
+        resolvedValue = Object.create(null)
+        Object.defineProperty(resolvedValue, valueSymbol, { value: og })
     }
 
-    return value
+    return resolvedValue
 }

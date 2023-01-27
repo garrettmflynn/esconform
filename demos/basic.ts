@@ -37,11 +37,15 @@ const specification = {
 } as any
 
 
-let value;
-Object.defineProperty(object, 'hidden', { get: () => value, set: (v) => value = v, enumerable: false })
-Object.defineProperty(object, 'promise', { get: function () {
+const define = (name, get) => {
+    let value;
+    Object.defineProperty(object, name, { get: () => get(value), set: (v) => value = v, enumerable: false, configurable: true })
+}
+
+define('hidden', (value) => value)
+define('promise', (value) => {
     return new Promise((resolve) => setTimeout(() => resolve(value), 1000))
-}, set: (v) => value = v, enumerable: false })
+})
 
 const model = new Model({
 
@@ -60,7 +64,10 @@ const model = new Model({
     specification
 })
 
-const output = model.apply(object)
+const output = model.apply(
+    object, 
+    // { clone: false }
+)
 
 console.log('Got!', output)
 console.log('Original!', object)
@@ -107,7 +114,7 @@ console.log('--------- Adding nested property to Typed Array ---------')
 console.log('Typed array property value (before)', output.Float32.test)
 output.Float32.test = true
 console.log('Typed array property value (after)', output.Float32.test)
-console.log('Typed array property value (original)', object.float32.test)
+console.log('Typed array property value (original)', object.float32?.test)
 
 
 const checkPromise = async () => {

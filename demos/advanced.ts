@@ -47,12 +47,20 @@ const person = {
     fullName: 'John Doe',
     age: 30,
     address: '123 Main St',
-    extra: 'THIS IS REALLY ANNOYING'
+    extra: 'THIS IS REALLY ANNOYING',
 }
 
-const john = model.apply(person)
+const target = {}
+const john = model.apply(
+    person, 
+    {
+        target,
+        // target: person
+    }
+)
 console.log('John', john)
 console.log('Data', person)
+console.log('Target', target)
 
 // Properties are transformed based on the specification
 console.log('firstName', john.firstName) // Result: John

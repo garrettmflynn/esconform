@@ -1,8 +1,8 @@
 (() => {
   var __defProp = Object.defineProperty;
-  var __export = (target, all) => {
+  var __export = (target2, all) => {
     for (var name in all)
-      __defProp(target, name, { get: all[name], enumerable: true });
+      __defProp(target2, name, { get: all[name], enumerable: true });
   };
 
   // src/globals.ts
@@ -14,13 +14,21 @@
   __export(presets_exports, {
     objectify: () => objectify
   });
-  var objectify = (key, value2) => {
-    if (value2 == void 0) {
-      const og = value2;
-      value2 = /* @__PURE__ */ Object.create(null);
-      Object.defineProperty(value2, valueSymbol, { value: og });
+  var objectify = (key, value) => {
+    const typeOf = typeof value;
+    let resolvedValue = value;
+    if (typeOf === "string")
+      resolvedValue = new String(value);
+    else if (typeOf === "number")
+      resolvedValue = new Number(value);
+    else if (typeOf === "boolean")
+      resolvedValue = new Boolean(value);
+    else if (!value) {
+      const og = value;
+      resolvedValue = /* @__PURE__ */ Object.create(null);
+      Object.defineProperty(resolvedValue, valueSymbol, { value: og });
     }
-    return value2;
+    return resolvedValue;
   };
 
   // src/properties.ts
@@ -76,14 +84,17 @@
   // src/transformations.ts
   var isPromise = (o) => o && typeof o === "object" && typeof o.then === "function";
   var unresolved = Symbol("unresolved");
-  var registerAllProperties = (o, specObject, funcs = {}, path = [], history = [], acc = {}) => {
-    if (history.length === 0)
+  var registerAllProperties = (o, specObject, funcs = {}, options = {}, path = [], history = []) => {
+    const first = history.length === 0;
+    if (first)
       history.push(o);
+    const willUpdateOriginal = options.target === o;
+    const acc = willUpdateOriginal ? history[history.length - 1] : first ? options.target ?? {} : o;
     const properties = /* @__PURE__ */ new Set([...getAllPropertyNames(o), ...Object.getOwnPropertySymbols(o)]);
     const specKeys = /* @__PURE__ */ new Set([...getAllPropertyNames(specObject), ...Object.getOwnPropertySymbols(specObject)]);
     const registeredProperties = new Set(specKeys);
     const register = (key) => {
-      const registered = registerPropertyUpdate(key, path, history, acc, funcs, specObject);
+      const registered = registerPropertyUpdate(key, path, history, acc, funcs, specObject, options, { willUpdateOriginal });
       registered.forEach((key2) => {
         specKeys.delete(key2);
         registeredProperties.add(key2);
@@ -94,48 +105,50 @@
     let toReturn = acc;
     if (globalThis.Proxy) {
       toReturn = new Proxy(acc, {
-        set(target, property, value2) {
+        set(target2, property, value) {
           if (registeredProperties.has(property))
-            target[property] = value2;
+            target2[property] = value;
         }
       });
     } else
       console.warn("[esmodel] Proxy not available. Unregistered property setters will not be intercepted.");
     return toReturn;
   };
-  var registerPropertyUpdate = (key, path, history, acc, funcs, specObject = {}, linked = false) => {
+  var registerPropertyUpdate = (key, path, history, acc, funcs, specObject = {}, options = {}, internalMetadata) => {
+    const mutate = internalMetadata.willUpdateOriginal;
     const parent = history[history.length - 1];
     const updatedPath = [...path, key];
     let resolved = unresolved;
     let registered = [];
+    const desc = { ...Object.getOwnPropertyDescriptor(parent, key) };
     const update = funcs.keys ? funcs.keys(key, specObject, path, history) : key;
     const isObject = update && typeof update === "object";
     const links = isObject ? update.links : void 0;
     if (links) {
       for (let o of links) {
-        const parentCopy = history[history.length - 1] = { ...parent };
+        const parentCopy = history[history.length - 1] = mutate ? parent : { ...parent };
         registered.push(o.key);
         if (typeof o.update === "function") {
           let getter2 = function() {
-            const res = "value" in o ? o.value : resolved !== unresolved ? resolved : parent[key];
-            value2 = isPromise(res) ? res.then(setter2) : setter2(res);
-            return onUpdate(value2);
-          }, setter2 = function(value3) {
-            value3 = onValueUpdate(value3, acc, [...path, o.key], history, funcs, specObject[o.key]);
-            return value3;
+            const res = "value" in o ? o.value : resolved !== unresolved ? resolved : mutate ? desc.get ? desc.get.call(parent) : desc.value : parent[key];
+            value = isPromise(res) ? res.then(setter2) : setter2(res);
+            return onUpdate(value);
+          }, setter2 = function(value2) {
+            value2 = onValueUpdate(o.key, value2, [...path, o.key], history, funcs, specObject, options, internalMetadata);
+            return value2;
           };
-          let value2 = unresolved;
+          let value = unresolved;
           const onUpdate = o.update;
           Object.defineProperty(parentCopy, o.key, {
             get: getter2,
             set: (v) => {
-              value2 = v;
-              return value2;
+              value = v;
+              return value;
             }
           });
         } else
           parentCopy[o.key] = o.value;
-        registerPropertyUpdate(o.key, path, history, acc, funcs, specObject, true);
+        registerPropertyUpdate(o.key, path, history, acc, funcs, specObject, options, { ...internalMetadata, linked: true });
       }
     }
     const enumerable = isObject ? update.enumerable === false ? false : true : true;
@@ -143,63 +156,78 @@
     const type = typeof _update;
     const silence = _update == void 0 || _update === removeSymbol || type !== "string" && type !== "symbol";
     const resolvedKey = silence ? key : _update;
-    if (silence && !links)
+    if (silence && !links) {
+      delete acc[key];
       return registered;
-    else
+    } else
       registered.push(resolvedKey);
-    const desc = { ...Object.getOwnPropertyDescriptor(parent, key) };
-    delete desc.value;
-    delete desc.writable;
-    function setter(value2) {
-      resolved = onValueUpdate(value2, acc, updatedPath, history, funcs, specObject[resolvedKey]);
+    function setter(value) {
+      resolved = onValueUpdate(resolvedKey, value, updatedPath, history, funcs, specObject, options, internalMetadata);
       return resolved;
     }
     function getter() {
       if (silence)
         return;
-      else if (resolved === unresolved || linked) {
-        const value2 = parent[key];
-        return isPromise(value2) ? value2.then(setter) : setter(value2);
+      else if (resolved === unresolved || internalMetadata.linked) {
+        const value = mutate ? desc.get ? desc.get.call(parent) : desc.value : parent[key];
+        return isPromise(value) ? value.then(setter) : setter(value);
       } else
         return resolved;
     }
-    Object.defineProperty(acc, resolvedKey, {
-      ...desc,
-      get: getter,
-      set: desc.set ? (value2) => {
-        desc.set(value2);
-        return setter(value2);
-      } : setter,
-      enumerable: silence ? false : enumerable,
-      configurable: false
-    });
+    if (!mutate || desc?.configurable !== false) {
+      Object.defineProperty(acc, resolvedKey, {
+        get: getter,
+        set: desc.set ? (value) => {
+          desc.set(value);
+          return setter(value);
+        } : setter,
+        enumerable: silence ? false : enumerable,
+        configurable: false
+      });
+    }
     if (key !== resolvedKey)
       delete acc[key];
     return registered;
   };
-  var onValueUpdate = (value2, parent, path, history, funcs, specValue) => {
+  var onValueUpdate = (resolvedKey, value, path, history, funcs, specObject, options, internalMetadata) => {
     const key = path[path.length - 1];
-    const update = funcs.values ? funcs.values(key, value2, specValue, path, history) : value2;
+    const specValue = resolvedKey in specObject ? specObject[resolvedKey] ?? specObject[key] : specObject[key];
+    const update = funcs.values ? funcs.values(key, value, specValue, path, history) : value;
     const updateIsObject = update && typeof update === "object";
     const resolved = updateIsObject && "value" in update ? update.value : update;
     const isObject = resolved && resolved?.constructor?.name === "Object";
     const clone = typeof resolved === "symbol" ? resolved : isObject ? { ...resolved } : Array.isArray(resolved) ? [...resolved] : resolved?.constructor ? new resolved.constructor(resolved) : resolved;
     if (isObject)
-      registerAllProperties(clone, specValue, funcs, path, [...history, value2], clone);
+      registerAllProperties(clone, specValue, funcs, options, path, [...history, value]);
     return clone;
   };
-  var keys = (object2, specObject, keyUpdateFunction) => registerAllProperties(object2, specObject, { keys: keyUpdateFunction });
-  var apply = (object2, specObject, updateFunctions) => registerAllProperties(object2, specObject, updateFunctions);
-  var values = (object2, specObject, valueUpdateFunction) => registerAllProperties(object2, specObject, { values: valueUpdateFunction });
+  var keys = (object2, specObject, keyUpdateFunction, options) => registerAllProperties(object2, specObject, { keys: keyUpdateFunction }, options);
+  var apply = (object2, specObject, updateFunctions, options) => registerAllProperties(object2, specObject, updateFunctions, options);
+  var values = (object2, specObject, valueUpdateFunction, options) => registerAllProperties(object2, specObject, { values: valueUpdateFunction }, options);
 
-  // src/model.ts
+  // src/Model.ts
   var Model = class {
     constructor(config) {
       this.config = {};
-      this.set = (config) => this.config = config;
-      this.apply = (o, spec = this.config.specification) => apply(o, spec, this.config);
-      this.keys = (o, spec = this.config.specification) => keys(o, spec, this.config.keys);
-      this.values = (o, spec = this.config.specification) => values(o, spec, this.config.values);
+      this.set = (config) => {
+        this.config = config;
+        const spec = this.config.specification;
+        if (Array.isArray(spec)) {
+          console.log("OG Specs", spec);
+          let acc = this.config.specification = {};
+          spec.forEach((o) => {
+            const properties = /* @__PURE__ */ new Set([...getAllPropertyNames(o), ...Object.getOwnPropertySymbols(o)]);
+            properties.forEach((key) => {
+              if (!(key in acc))
+                Object.defineProperty(acc, key, Object.getOwnPropertyDescriptor(o, key));
+            });
+          });
+          console.log("New Spec", this.config.specification);
+        }
+      };
+      this.apply = (o, options) => apply(o, this.config.specification, this.config, options);
+      this.keys = (o, options) => keys(o, this.config.specification, this.config.keys, options);
+      this.values = (o, options) => values(o, this.config.specification, this.config.values, options);
       this.set(config);
     }
   };
@@ -230,11 +258,14 @@
       Boolean: true
     }
   };
-  var value;
-  Object.defineProperty(object, "hidden", { get: () => value, set: (v) => value = v, enumerable: false });
-  Object.defineProperty(object, "promise", { get: function() {
+  var define = (name, get) => {
+    let value;
+    Object.defineProperty(object, name, { get: () => get(value), set: (v) => value = v, enumerable: false, configurable: true });
+  };
+  define("hidden", (value) => value);
+  define("promise", (value) => {
     return new Promise((resolve) => setTimeout(() => resolve(value), 1e3));
-  }, set: (v) => value = v, enumerable: false });
+  });
   var model = new Model({
     values: presets_exports.objectify,
     keys: (key, spec) => {
@@ -283,7 +314,7 @@
   console.log("Typed array property value (before)", output.Float32.test);
   output.Float32.test = true;
   console.log("Typed array property value (after)", output.Float32.test);
-  console.log("Typed array property value (original)", object.float32.test);
+  console.log("Typed array property value (original)", object.float32?.test);
   var checkPromise = async () => {
     console.log("--------- Checking promise value ---------");
     console.log("Promise value (before)", await output.Promise);
@@ -295,11 +326,11 @@
   // demos/advanced.ts
   console.log("---------------- ADVANCED DEMO ----------------");
   var model2 = new Model({
-    values: (key, value2, spec) => {
-      if (value2 && spec === "isodatetime")
-        return new Date(value2).toISOString();
+    values: (key, value, spec) => {
+      if (value && spec === "isodatetime")
+        return new Date(value).toISOString();
       else
-        return value2;
+        return value;
     },
     keys: (key, spec) => {
       const specVal = spec[key];
@@ -309,8 +340,8 @@
       };
       if (key === "fullName") {
         info.links = [
-          { key: "firstName", update: (value2) => value2.split(" ")[0] },
-          { key: "lastName", update: (value2) => value2.split(" ")[1] }
+          { key: "firstName", update: (value) => value.split(" ")[0] },
+          { key: "lastName", update: (value) => value.split(" ")[1] }
         ];
       }
       if (!(key in spec))
@@ -334,9 +365,13 @@
     address: "123 Main St",
     extra: "THIS IS REALLY ANNOYING"
   };
-  var john = model2.apply(person);
+  var target = {};
+  var john = model2.apply(person, {
+    target
+  });
   console.log("John", john);
   console.log("Data", person);
+  console.log("Target", target);
   console.log("firstName", john.firstName);
   console.log("lastName", john.lastName);
   console.log("fullName", john.fullName);

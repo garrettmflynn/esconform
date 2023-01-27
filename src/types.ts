@@ -23,3 +23,12 @@ export type ArbitraryObject = {[x:KeyType]: any}
 export type KeyType = string | symbol | number
 export type PathType = (KeyType)[]
 export type HistoryType = any[]
+
+export type RegistrationOptions = {
+    target?: ArbitraryObject,
+}
+
+export type InternalMetadata = {
+    willUpdateOriginal: boolean,
+    linked?: boolean
+}
