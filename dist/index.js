@@ -119,12 +119,16 @@
     let toReturn = acc;
     properties.forEach((k) => register(k));
     specKeys.forEach((k) => register(k));
-    acc[newKeySymbol] = (key, value) => {
-      const historyCopy = [...history];
-      const parentCopy = historyCopy[historyCopy.length - 1] = willUpdateOriginal ? o : { ...o };
-      parentCopy[key] = value;
-      register(key, historyCopy);
-    };
+    Object.defineProperty(acc, newKeySymbol, {
+      value: (key, value) => {
+        const historyCopy = [...history];
+        const parentCopy = historyCopy[historyCopy.length - 1] = willUpdateOriginal ? o : { ...o };
+        parentCopy[key] = value;
+        register(key, historyCopy);
+      },
+      writable: false,
+      configurable: false
+    });
     if (globalThis.Proxy) {
       toReturn = new Proxy(acc, {
         set(target2, property, value) {

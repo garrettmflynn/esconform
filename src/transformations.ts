@@ -35,12 +35,17 @@ const registerAllProperties = (o, specObject: ArbitraryObject, funcs: UpdateFunc
 
     properties.forEach((k) => register(k)) // Try to register properties provided by the user
     specKeys.forEach((k) => register(k)) // Register extra specification properties
-    acc[newKeySymbol] = (key: KeyType, value: any) => {
-        const historyCopy = [...history]
-        const parentCopy = historyCopy[historyCopy.length - 1] = (willUpdateOriginal ? o : {...o}) // Copy the parent object to avoid adding new keys
-        parentCopy[key] = value
-        register(key, historyCopy)
-    }
+
+    Object.defineProperty(acc, newKeySymbol, {
+        value: (key: KeyType, value: any) => {
+            const historyCopy = [...history]
+            const parentCopy = historyCopy[historyCopy.length - 1] = (willUpdateOriginal ? o : {...o}) // Copy the parent object to avoid adding new keys
+            parentCopy[key] = value
+            register(key, historyCopy)
+        },
+        writable: false,
+        configurable: false
+    })
 
     // If Proxy is available, use it to intercept property setters
     if (globalThis.Proxy) {
