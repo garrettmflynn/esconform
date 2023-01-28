@@ -1,4 +1,4 @@
-import { Model } from "../src"
+import { Model, newKeySymbol } from "../src"
 
 console.log('---------------- ADVANCED DEMO ----------------')
 const model = new Model({

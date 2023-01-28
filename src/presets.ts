@@ -15,8 +15,6 @@ export const objectify = (key, value) => {
             value = Object.create(null)
             Object.defineProperty(value, valueSymbol, { value: og })
         }
-
-        console.log('value', value)
     }
 
     return value

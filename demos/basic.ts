@@ -1,4 +1,4 @@
-import { Model, presets, transfer } from "../src"
+import { Model, newKeySymbol, presets, transfer } from "../src"
 
 const symbol = Symbol('symbol')
 const object = {
@@ -142,3 +142,12 @@ console.log('--------- Setting undefined ---------')
 console.log('Undefined value (before)', output.Undefined)
 output.Undefined = 'should have metadata'
 console.log('Undefined value (after)',output.Undefined)
+
+
+console.log('--------- Adding new key through special symbol ---------')
+output[newKeySymbol]('test', 'AHHH')
+console.log('test', output.Test)
+output[newKeySymbol]('test', 'OOF')
+console.log('test', output.Test)
+output.Test = 'EEK'
+console.log('test', output.Test)

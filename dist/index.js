@@ -8,6 +8,7 @@
   // src/globals.ts
   var valueSymbol = Symbol("value");
   var removeSymbol = Symbol("remove");
+  var newKeySymbol = Symbol("newKey");
 
   // src/presets.ts
   var presets_exports = {};
@@ -69,7 +70,7 @@
   var transfer = (o, toTransfer, descOverride) => {
     const properties = /* @__PURE__ */ new Set([...getAllPropertyNames(toTransfer), ...Object.getOwnPropertySymbols(toTransfer)]);
     properties.forEach((key) => {
-      if (!(key in o)) {
+      if (!(key in o) && key !== valueSymbol) {
         const desc = Object.getOwnPropertyDescriptor(toTransfer, key);
         Object.defineProperty(o, key, descOverride ? { ...desc, ...descOverride } : desc);
       }
@@ -91,7 +92,6 @@
         value = /* @__PURE__ */ Object.create(null);
         Object.defineProperty(value, valueSymbol, { value: og });
       }
-      console.log("value", value);
     }
     return value;
   };
@@ -108,21 +108,31 @@
     const properties = /* @__PURE__ */ new Set([...getAllPropertyNames(o), ...Object.getOwnPropertySymbols(o)]);
     const specKeys = /* @__PURE__ */ new Set([...getAllPropertyNames(specObject), ...Object.getOwnPropertySymbols(specObject)]);
     const registeredProperties = new Set(specKeys);
-    const register = (key) => {
-      const registered = registerPropertyUpdate(key, path, history, acc, funcs, specObject, options, { willUpdateOriginal });
+    const internalMetadata = { willUpdateOriginal };
+    const register = (key, historyArr = history) => {
+      const registered = registerPropertyUpdate(key, path, historyArr, acc, funcs, specObject, options, internalMetadata);
       registered.forEach((key2) => {
         specKeys.delete(key2);
         registeredProperties.add(key2);
       });
     };
-    properties.forEach(register);
-    specKeys.forEach(register);
     let toReturn = acc;
+    properties.forEach((k) => register(k));
+    specKeys.forEach((k) => register(k));
+    acc[newKeySymbol] = (key, value) => {
+      const historyCopy = [...history];
+      const parentCopy = historyCopy[historyCopy.length - 1] = willUpdateOriginal ? o : { ...o };
+      parentCopy[key] = value;
+      register(key, historyCopy);
+    };
     if (globalThis.Proxy) {
       toReturn = new Proxy(acc, {
         set(target2, property, value) {
-          if (registeredProperties.has(property))
+          if (registeredProperties.has(property)) {
             target2[property] = value;
+            return true;
+          }
+          return false;
         }
       });
     } else
@@ -135,7 +145,7 @@
     const updatedPath = [...path, key];
     let resolved = unresolved;
     let registered = [];
-    const desc = { ...Object.getOwnPropertyDescriptor(parent, key) };
+    const desc = parent ? { ...Object.getOwnPropertyDescriptor(parent, key) } : {};
     const update = funcs.keys ? funcs.keys(key, specObject, path, history) : key;
     const isObject = update && typeof update === "object";
     const links = isObject ? update.links : void 0;
@@ -144,18 +154,18 @@
         const parentCopy = history[history.length - 1] = mutate ? parent : { ...parent };
         registered.push(o.key);
         if (typeof o.update === "function") {
-          let getter2 = function() {
+          let getter = function() {
             const res = "value" in o ? o.value : resolved !== unresolved ? resolved : mutate ? desc.get ? desc.get.call(parent) : desc.value : parent[key];
-            value = isPromise(res) ? res.then(setter2) : setter2(res);
+            value = isPromise(res) ? res.then(setter) : setter(res);
             return onUpdate(value);
-          }, setter2 = function(value2) {
+          }, setter = function(value2) {
             value2 = onValueUpdate(o.key, value2, [...path, o.key], history, funcs, specObject, options, internalMetadata);
             return value2;
           };
           let value = unresolved;
           const onUpdate = o.update;
           Object.defineProperty(parentCopy, o.key, {
-            get: getter2,
+            get: getter,
             set: (v) => {
               value = v;
               return value;
@@ -166,7 +176,7 @@
         registerPropertyUpdate(o.key, path, history, acc, funcs, specObject, options, { ...internalMetadata, linked: true });
       }
     }
-    const enumerable = isObject ? update.enumerable === false ? false : true : true;
+    const enumerable = (isObject ? update.enumerable === false ? false : desc.enumerable : desc.enumerable) ?? true;
     const _update = isObject ? update.value : update;
     const type = typeof _update;
     const silence = _update == void 0 || _update === removeSymbol || type !== "string" && type !== "symbol";
@@ -176,40 +186,39 @@
       return registered;
     } else
       registered.push(resolvedKey);
-    function setter(value) {
-      const original = resolved;
-      resolved = onValueUpdate(resolvedKey, value, updatedPath, history, funcs, specObject, options, internalMetadata);
-      if (valueSymbol in resolved) {
-        const copy = transfer({}, original);
-        delete copy[valueSymbol];
-        transfer(resolved, copy);
+    const existingDesc = Object.getOwnPropertyDescriptor(acc, resolvedKey);
+    const exists = existingDesc && existingDesc.set && existingDesc.configurable !== true;
+    if (exists)
+      acc[resolvedKey] = parent[key];
+    else {
+      let setter = function(value) {
+        const original = resolved;
+        resolved = onValueUpdate(resolvedKey, value, updatedPath, history, funcs, specObject, options, internalMetadata);
+        if (valueSymbol in resolved) {
+          const copy = transfer({}, original);
+          transfer(resolved, copy);
+        }
+        return valueSymbol in resolved ? resolved[valueSymbol] : resolved;
+      }, getter = function() {
+        if (silence)
+          return;
+        else if (resolved === unresolved || internalMetadata.linked) {
+          const value = mutate ? desc.get ? desc.get.call(parent) : desc.value : parent ? parent[key] : void 0;
+          return isPromise(value) ? value.then(setter) : setter(value);
+        } else
+          return valueSymbol in resolved ? resolved[valueSymbol] : resolved;
+      };
+      if (!mutate || desc?.configurable !== false) {
+        Object.defineProperty(acc, resolvedKey, {
+          get: getter,
+          set: desc.set ? (value) => {
+            desc.set(value);
+            return setter(value);
+          } : setter,
+          enumerable: silence ? false : enumerable,
+          configurable: false
+        });
       }
-      if (valueSymbol in resolved)
-        return resolved[valueSymbol];
-      return resolved;
-    }
-    function getter() {
-      if (silence)
-        return;
-      else if (resolved === unresolved || internalMetadata.linked) {
-        const value = mutate ? desc.get ? desc.get.call(parent) : desc.value : parent[key];
-        return isPromise(value) ? value.then(setter) : setter(value);
-      } else {
-        if (valueSymbol in resolved)
-          return resolved[valueSymbol];
-        return resolved;
-      }
-    }
-    if (!mutate || desc?.configurable !== false) {
-      Object.defineProperty(acc, resolvedKey, {
-        get: getter,
-        set: desc.set ? (value) => {
-          desc.set(value);
-          return setter(value);
-        } : setter,
-        enumerable: silence ? false : enumerable,
-        configurable: false
-      });
     }
     if (key !== resolvedKey)
       delete acc[key];
@@ -224,7 +233,7 @@
     const isObject = resolved && resolved?.constructor?.name === "Object";
     const clone = typeof resolved === "symbol" ? resolved : isObject ? { ...resolved } : Array.isArray(resolved) ? [...resolved] : objectify(resolvedKey, resolved);
     if (isObject)
-      registerAllProperties(clone, specValue, funcs, options, path, [...history, value]);
+      registerAllProperties(clone, specValue, funcs, options, path, [...history, value ?? resolved]);
     return clone;
   };
   var keys = (object2, specObject, keyUpdateFunction, options) => registerAllProperties(object2, specObject, { keys: keyUpdateFunction }, options);
@@ -352,6 +361,13 @@
   console.log("Undefined value (before)", output.Undefined);
   output.Undefined = "should have metadata";
   console.log("Undefined value (after)", output.Undefined);
+  console.log("--------- Adding new key through special symbol ---------");
+  output[newKeySymbol]("test", "AHHH");
+  console.log("test", output.Test);
+  output[newKeySymbol]("test", "OOF");
+  console.log("test", output.Test);
+  output.Test = "EEK";
+  console.log("test", output.Test);
 
   // demos/advanced.ts
   console.log("---------------- ADVANCED DEMO ----------------");
