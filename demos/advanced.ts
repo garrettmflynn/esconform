@@ -1,6 +1,21 @@
 import { Model, newKeySymbol } from "../src"
 
 console.log('---------------- ADVANCED DEMO ----------------')
+
+const specification = {
+    // fullName: 'string',
+    firstName: 'string',
+    lastName: 'string',
+    age: 'number',
+    address: {
+        type: 'string',
+    },
+    dateOfBirth: 'isodatetime'
+}
+
+
+Object.defineProperty(specification, 'address', { value: specification.address }) // Make non-enumerable
+
 const model = new Model({
 
     values: (key, value, spec) => {
@@ -10,12 +25,7 @@ const model = new Model({
 
     keys: (key, spec) => {
 
-        const specVal = spec[key]
-
-        let info: any = {
-            value: key,
-            enumerable: specVal?.enumerable ?? true // Specify the enumerability of the keys
-        }
+        let info: any = { value: key }
 
         // Create two new keys
         if (key === 'fullName') {
@@ -25,22 +35,12 @@ const model = new Model({
             ]
         }
 
-        if (!(key in spec)) delete info.value // Will be silenced / non-enumerable
+        // if (!(key in spec)) delete info.value // Will be silenced / non-enumerable
 
         return info
     },
 
-    specification: {
-        // fullName: 'string',
-        firstName: 'string',
-        lastName: 'string',
-        age: 'number',
-        address: {
-            type: 'string',
-            enumerable: false
-        },
-        dateOfBirth: 'isodatetime'
-    }
+    specification: specification
 })
 
 const person = {

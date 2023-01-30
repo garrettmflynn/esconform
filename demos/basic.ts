@@ -1,4 +1,4 @@
-import { Model, newKeySymbol, presets, transfer } from "../src"
+import { Model, newKeySymbol, presets } from "../src"
 
 const symbol = Symbol('symbol')
 const object = {
@@ -7,11 +7,11 @@ const object = {
     boolean: true,
 
     // Objects
-    array: [1, 2, 3],
-    float32: new Float32Array([1,2,3]),
     object: {
         number: 'hi there' // Incorrect
     },
+    array: [1, 2, 3],
+    float32: new Float32Array([1,2,3]),
 
     // Symbols
     [symbol]: 'this is a symbol',
@@ -43,6 +43,17 @@ const specification = {
     }
 } as any
 
+const nonEnumerableProps = [symbol, 'Array', 'Float32', 'Function', 'Null']
+nonEnumerableProps.forEach(key => {
+    Object.defineProperty(specification, key, { value: true })
+})
+
+const nonEnumerableObjectProps = ['Number', 'String']
+nonEnumerableObjectProps.forEach(key => {
+    Object.defineProperty(specification.Object, key, { value: true })
+})
+
+
 
 const define = (name, get) => {
     let value;
@@ -57,14 +68,7 @@ define('promise', (value) => {
 const model = new Model({
 
     // Transform values to objects
-    values: (key, value, spec) => {
-        const o = presets.objectify(key, value)
-
-        // // Testing the addition of metadata to a null object
-        // if (spec?.type) return transfer(o, spec, {enumerable: false}) // Manually transferring...
-        // else 
-        return o
-    },
+    values: (key, value, spec) => presets.objectify(key, value),
 
     // Transform keys to uppercase
     keys: (key, spec) => {
@@ -133,11 +137,12 @@ console.log('Typed array property value (original)', object.float32?.test)
 
 const checkPromise = async () => {
     console.log('--------- Checking promise value ---------')
-    console.log('Promise value (before)', await output.Promise)
+    console.log('Promise value (before)', output.Promise)
     output.Promise = 20
-    console.log('Promise value (after)', await output.Promise)
+    console.log('Promise value (after)',  output.Promise)
 }
-checkPromise()
+
+window.onmousedown = () => checkPromise()
 
 console.log('--------- Setting undefined ---------')
 console.log('Undefined value (before)', output.Undefined)

@@ -1,4 +1,5 @@
 import { 
+    attachedSpecSymbol,
     newKeySymbol, 
     // propertiesRegistrySymbol, 
     removeSymbol, 
@@ -22,65 +23,82 @@ type ToIterateType = {
 
 const unresolved = Symbol('unresolved')
 
+function hasSpecValue(key: KeyType, specObject: ArbitraryObject, fallbackKey: KeyType) {
+    return (key in specObject) || (fallbackKey in specObject)
+}
+
+function getSpecKey(key: KeyType, specObject: ArbitraryObject, fallbackKey: KeyType) {
+    return (key in specObject) ? key : ((fallbackKey in specObject) ? fallbackKey : undefined)
+}
+
+function getSpecValue(key: KeyType, specObject: ArbitraryObject, fallbackKey: KeyType) {
+    return ((key in specObject) ? (specObject[key] ?? specObject[fallbackKey]) :  specObject[fallbackKey])
+}
 
 const registerAllProperties = (o, specObject: ArbitraryObject, funcs: UpdateFunctions = {}, options: RegistrationOptions = {}, path: PathType = [], history: HistoryType = [], toIterate:ToIterateType = {}) => {
+
 
     const first = history.length === 0
     if (first) history.push(o) // Add original object to history
     const willUpdateOriginal = options.target === o //|| options.clone === false
     const acc = (willUpdateOriginal) ? history[history.length - 1] : (first ? options.target ?? {} : o) // Use original object if clone is disabled
 
-    const properties = new Set([...getAllPropertyNames(o), ...Object.getOwnPropertySymbols(o)]) // Get all properties, enumerable or otherwise
-    properties.delete('constructor') // No constructor...
+    if (newKeySymbol in acc) return o
+    else {
 
-    const specKeys = new Set([...getAllPropertyNames(specObject), ...(specObject ? Object.getOwnPropertySymbols(specObject) : [])])
+        const properties = new Set([...getAllPropertyNames(o), ...Object.getOwnPropertySymbols(o)]) // Get all properties, enumerable or otherwise
+        properties.delete('constructor') // No constructor...
 
-    const registeredProperties = new Set(specKeys)
+        const specKeys = new Set([...getAllPropertyNames(specObject), ...(specObject ? Object.getOwnPropertySymbols(specObject) : [])])
 
-    const internalMetadata = { willUpdateOriginal }
-    const register = (key: KeyType | number, historyArr = history) => {
-        if (key === valueSymbol) return // Don't register values that are handled by the spec
-        if (typeof key === 'string' && isNumeric(key)) return // Don't register numeric properties
-        const registered = registerPropertyUpdate(key as KeyType, path, historyArr, acc, funcs, specObject, options, internalMetadata)
-        registered.forEach(key => {
-            specKeys.delete(key)
-            registeredProperties.add(key)
-        })
-    }
+        const registeredProperties = new Set(specKeys)
 
-    let toReturn = acc
+        const internalMetadata = { willUpdateOriginal }
+        const register = (key: KeyType | number, historyArr = history) => {
+            if (key === valueSymbol) return // Don't register values that are handled by the spec
+            if (typeof key === 'string' && isNumeric(key)) return // Don't register numeric properties
+            const registered = registerPropertyUpdate(key as KeyType, path, historyArr, acc, funcs, specObject, options, internalMetadata)
+            registered.forEach(key => {
+                specKeys.delete(key)
+                registeredProperties.add(key)
+            })
+        }
 
-    if (toIterate.properties !== false) properties.forEach((k) => register(k)) // Try to register properties provided by the user
-    if (toIterate.specification !== false) specKeys.forEach((k) => register(k)) // Register extra specification properties
+        let toReturn = acc
 
-    
-    Object.defineProperty(acc, newKeySymbol, {
-        value: (key: KeyType, value: any) => {
-            const historyCopy = [...history]
-            const parentCopy = historyCopy[historyCopy.length - 1] = (willUpdateOriginal ? o : {...o}) // Copy the parent object to avoid adding new keys
-            parentCopy[key] = value
-            register(key, historyCopy)
-        },
-        writable: false,
-        configurable: false
-    })
+        if (toIterate.properties !== false) properties.forEach((k) => register(k)) // Try to register properties provided by the user
+        if (toIterate.specification !== false) specKeys.forEach((k) => register(k)) // Register extra specification properties
 
-    // If Proxy is available, use it to intercept property setters
-    if (globalThis.Proxy) {
-        toReturn = new Proxy(acc, {
-            set(target, property, value) {
-                
-                if (registeredProperties.has(property)){
-                    target[property] = value // Only set registered properties
-                    return true
-                }
-
-                return false
+        
+        if (!(newKeySymbol in acc)) Object.defineProperty(acc, newKeySymbol, {
+            value: (key: KeyType, value: any, spec?: ArbitraryObject) => {
+                const historyCopy = [...history]
+                const parentCopy = historyCopy[historyCopy.length - 1] = (willUpdateOriginal ? o : {...o}) // Copy the parent object to avoid adding new keys
+                parentCopy[key] = value
+                specObject[key] = spec // Ensure the specification object is extended
+                register(key, historyCopy)
             },
+            writable: false,
+            configurable: false
         })
-    } else console.warn('[esmodel] Proxy not available. Unregistered property setters will not be intercepted.')
 
-    return toReturn
+        // If Proxy is available, use it to intercept property setters
+        if (globalThis.Proxy) {
+            toReturn = new Proxy(acc, {
+                set(target, property, value) {
+                    
+                    if (registeredProperties.has(property)){
+                        target[property] = value // Only set registered properties
+                        return true
+                    }
+
+                    return false
+                },
+            })
+        } else console.warn('[esmodel] Proxy not available. Unregistered property setters will not be intercepted.')
+
+        return toReturn
+    } 
 }
 
 // Spit out an object with getters / setters that transform the returned value
@@ -141,13 +159,15 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
         }
     }
 
-    const enumerable = (isObject ? (update.enumerable === false ? false : desc.enumerable) : desc.enumerable) ?? true // Default to existing. Otherwise true if undefined
     const _update = isObject ? update.value : update
+    const specKey =  getSpecKey(_update, specObject, key)
+    const specDesc = specKey ? {...Object.getOwnPropertyDescriptor(specObject, specKey)} as PropertyDescriptor : {}
+    const enumerable = specDesc.enumerable ?? desc.enumerable ?? true // Default to existing. Otherwise true if undefined
+
     const type = typeof _update
 
     // Allow for ignoring a property (including current and previous values)
-    const silence = (_update == undefined || _update === removeSymbol || (type !== 'string' && type !== 'symbol' && (type === 'object' && (!(_update instanceof String) && !(_update instanceof Number)))))
-
+    const silence = !hasSpecValue(_update, specObject, key)  || (_update == undefined || _update === removeSymbol || (type !== 'string' && type !== 'symbol' && (type === 'object' && (!(_update instanceof String) && !(_update instanceof Number)))))
     const resolvedKey = (silence) ? key : _update  as KeyType  
 
     if (silence && !links) {
@@ -172,23 +192,29 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
                     if (valueSymbol in value) value =  value[valueSymbol] // If the value is a model, get the actual value
                      if (value && typeof value.valueOf === 'function') value = value.valueOf() // If the value is a primitive, get the actual value
                 // } else console.error('Not in spec', value, valueSymbol in value, value[valueSymbol])
-
             }
 
             // Trigger value update response
             // acc[propertiesRegistrySymbol][resolvedKey] = 
             resolved = onValueUpdate(resolvedKey, value, updatedPath, history, funcs, specObject, options, internalMetadata)
-            return (valueSymbol in resolved) ? resolved[valueSymbol] : resolved // return actual value (null / undefined)
+            const toReturn = (valueSymbol in resolved) ? resolved[valueSymbol] : resolved // return actual value (null / undefined)
+            // console.warn('Has been set', resolvedKey, toReturn)
+            return toReturn
         }
 
         // Basic getter for the property
         function getter () {
+
+            let toReturn;
             if (silence) return
             else if (resolved === unresolved || internalMetadata.linked) {
-                const value = mutate ? (desc.get ? desc.get.call(parent) : desc.value) : (parent ? parent[key] : undefined) ?? specObject[key] //transfer({[fromSpecSymbol]: true}, specObject[key]) // Get original from specification as a backup
-                return isPromise(value) ? value.then(setter) : setter(value)
+                const value = mutate ? (desc.get ? desc.get.call(parent) : desc.value) : (parent ? parent[key] : undefined) ?? getSpecValue(resolvedKey, specObject, key) // Get original from specification as a backup
+                toReturn = isPromise(value) ? value.then(setter) : setter(value)
             }
-            else return (valueSymbol in resolved) ? resolved[valueSymbol] : resolved // return actual value (null / undefined)
+            else toReturn = (valueSymbol in resolved) ? resolved[valueSymbol] : resolved // return actual value (null / undefined)
+
+            // console.error('Returning from getter', resolvedKey, toReturn)
+            return toReturn
         }
 
         // Enhanced getter and setter based on existing property descriptor
@@ -216,9 +242,11 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
 const onValueUpdate = (resolvedKey: KeyType, value: any, path: PathType, history: HistoryType, funcs: UpdateFunctions, specObject: any, options: RegistrationOptions, internalMetadata: InternalMetadata) => {
     const key = path[path.length - 1]
 
-    // if (value?.[attachedSpecSymbol]) specObject[resolvedKey] = value[attachedSpecSymbol] // Allow spec extensions
+    // Allow spec extensions to be attached to values
+    if (value?.[attachedSpecSymbol]) specObject[resolvedKey] = value[attachedSpecSymbol]
 
-    const specValue = ((resolvedKey in specObject) ? (specObject[resolvedKey] ?? specObject[key]) :  specObject[key]) // Fallback to original key 
+    // Resolve the latest value
+    const specValue = getSpecValue(resolvedKey, specObject, key) // Fallback to original key 
     const update = funcs.values ? funcs.values(key, value, specValue, path, history) : value
 
     const updateIsObject = (update && typeof update  === 'object')
@@ -233,6 +261,7 @@ const onValueUpdate = (resolvedKey: KeyType, value: any, path: PathType, history
                 : objectify(resolvedKey, resolved) // Convert primitives to objects
             )
         )
+
 
     const historyObject = value ?? resolved
     const specIsObject = (specValue && typeof specValue === 'object')

@@ -8,6 +8,16 @@
  ### Usage
 
  ```js
+
+ const specification = {
+    firstName: 'string',
+    lastName: 'string',
+    age: 'number',
+}
+
+
+Object.defineProperty(specification, 'address', { value: {type: 'string'} })
+
 const newModel = new Model({
 
     values: (key, value, spec) => value,
@@ -34,15 +44,7 @@ const newModel = new Model({
         return info
     },
 
-    specification: {
-        firstName: 'string',
-        lastName: 'string',
-        age: 'number',
-        address: {
-            type: 'string',
-            enumerable: false
-        }
-    }
+    specification
 })
 
 const person = {
@@ -79,3 +81,6 @@ john.dateOfBirth = dob
 console.log('DoB', john.dateOfBirth) // Result: Sun Dec 31 1989 16:00:00 GMT-0800 (Pacific Standard Time)
 
 ```
+
+## Notes
+1. Sometimes promises will resolve as undefined (e.g. `nwbFile.acquisition.x.data` on WebNWB)
