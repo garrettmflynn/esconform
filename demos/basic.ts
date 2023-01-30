@@ -37,6 +37,7 @@ const specification = {
         Boolean: true
     },
 
+    // after undefined has been set, the 'type' key will be transferred to the new value...
     Undefined: {
         type: 'any'
     }
@@ -59,8 +60,8 @@ const model = new Model({
     values: (key, value, spec) => {
         const o = presets.objectify(key, value)
 
-        // Testing the addition of metadata to a null object
-        if (spec?.type) return transfer(o, spec, {enumerable: false})
+        // // Testing the addition of metadata to a null object
+        // if (spec?.type) return transfer(o, spec, {enumerable: false}) // Manually transferring...
         // else 
         return o
     },
@@ -116,9 +117,9 @@ console.log('Number value (after)', output.Number)
 console.log('--------- Updating object value ---------')
 console.log('Object value (before)', output.Object)
 output.Object = {
-    number: 1,
-    string: 'hi there',
-    boolean: true,
+    number: Math.pow(2, 32),
+    string: 'this is a string',
+    boolean: 'Not a boolean...',
 }
 console.log('Object value (after)', output.Object)
 

@@ -9,6 +9,7 @@
   var valueSymbol = Symbol("value");
   var removeSymbol = Symbol("remove");
   var newKeySymbol = Symbol("newKey");
+  var attachedSpecSymbol = Symbol("hasAttachedSpec");
 
   // src/presets.ts
   var presets_exports = {};
@@ -79,37 +80,40 @@
   };
 
   // src/presets.ts
-  var objectify = (key, value) => {
+  var objectify = (key, value, convertUndefined = true) => {
     const constructor = value?.constructor;
-    const copy = constructor || !value;
-    if (copy) {
-      if (constructor) {
-        let og = value;
-        value = new constructor(value);
-        value = transfer(value, og);
-      } else if (!value) {
-        const og = value;
-        value = /* @__PURE__ */ Object.create(null);
-        Object.defineProperty(value, valueSymbol, { value: og });
-      }
+    if (constructor) {
+      let og = value;
+      value = new constructor(value);
+      value = transfer(value, og);
+    } else if (convertUndefined && !value) {
+      const og = value;
+      value = /* @__PURE__ */ Object.create(null);
+      Object.defineProperty(value, valueSymbol, { value: og });
     }
     return value;
   };
 
   // src/transformations.ts
   var isPromise = (o) => o && typeof o === "object" && typeof o.then === "function";
+  function isNumeric(n) {
+    return !isNaN(parseFloat(n)) && isFinite(n);
+  }
   var unresolved = Symbol("unresolved");
-  var registerAllProperties = (o, specObject, funcs = {}, options = {}, path = [], history = []) => {
+  var registerAllProperties = (o, specObject, funcs = {}, options = {}, path = [], history = [], toIterate = {}) => {
     const first = history.length === 0;
     if (first)
       history.push(o);
     const willUpdateOriginal = options.target === o;
     const acc = willUpdateOriginal ? history[history.length - 1] : first ? options.target ?? {} : o;
     const properties = /* @__PURE__ */ new Set([...getAllPropertyNames(o), ...Object.getOwnPropertySymbols(o)]);
-    const specKeys = /* @__PURE__ */ new Set([...getAllPropertyNames(specObject), ...Object.getOwnPropertySymbols(specObject)]);
+    properties.delete("constructor");
+    const specKeys = /* @__PURE__ */ new Set([...getAllPropertyNames(specObject), ...specObject ? Object.getOwnPropertySymbols(specObject) : []]);
     const registeredProperties = new Set(specKeys);
     const internalMetadata = { willUpdateOriginal };
     const register = (key, historyArr = history) => {
+      if (typeof key === "string" && isNumeric(key))
+        return;
       const registered = registerPropertyUpdate(key, path, historyArr, acc, funcs, specObject, options, internalMetadata);
       registered.forEach((key2) => {
         specKeys.delete(key2);
@@ -117,18 +121,23 @@
       });
     };
     let toReturn = acc;
-    properties.forEach((k) => register(k));
-    specKeys.forEach((k) => register(k));
-    Object.defineProperty(acc, newKeySymbol, {
-      value: (key, value) => {
-        const historyCopy = [...history];
-        const parentCopy = historyCopy[historyCopy.length - 1] = willUpdateOriginal ? o : { ...o };
-        parentCopy[key] = value;
-        register(key, historyCopy);
-      },
-      writable: false,
-      configurable: false
-    });
+    if (toIterate.properties !== false)
+      properties.forEach((k) => register(k));
+    if (toIterate.specification !== false)
+      specKeys.forEach((k) => register(k));
+    if (newKeySymbol in acc)
+      console.error("Already transferred the newKeySymbol property");
+    else
+      Object.defineProperty(acc, newKeySymbol, {
+        value: (key, value) => {
+          const historyCopy = [...history];
+          const parentCopy = historyCopy[historyCopy.length - 1] = willUpdateOriginal ? o : { ...o };
+          parentCopy[key] = value;
+          register(key, historyCopy);
+        },
+        writable: false,
+        configurable: false
+      });
     if (globalThis.Proxy) {
       toReturn = new Proxy(acc, {
         set(target2, property, value) {
@@ -183,7 +192,7 @@
     const enumerable = (isObject ? update.enumerable === false ? false : desc.enumerable : desc.enumerable) ?? true;
     const _update = isObject ? update.value : update;
     const type = typeof _update;
-    const silence = _update == void 0 || _update === removeSymbol || type !== "string" && type !== "symbol";
+    const silence = _update == void 0 || _update === removeSymbol || type !== "string" && type !== "symbol" && (type === "object" && (!(_update instanceof String) && !(_update instanceof Number)));
     const resolvedKey = silence ? key : _update;
     if (silence && !links) {
       delete acc[key];
@@ -196,18 +205,19 @@
       acc[resolvedKey] = parent[key];
     else {
       let setter = function(value) {
-        const original = resolved;
-        resolved = onValueUpdate(resolvedKey, value, updatedPath, history, funcs, specObject, options, internalMetadata);
-        if (valueSymbol in resolved) {
-          const copy = transfer({}, original);
-          transfer(resolved, copy);
+        if (value && typeof value === "object") {
+          if (valueSymbol in value)
+            value = value[valueSymbol];
+          if (typeof value.valueOf === "function")
+            value = value.valueOf();
         }
+        resolved = onValueUpdate(resolvedKey, value, updatedPath, history, funcs, specObject, options, internalMetadata);
         return valueSymbol in resolved ? resolved[valueSymbol] : resolved;
       }, getter = function() {
         if (silence)
           return;
         else if (resolved === unresolved || internalMetadata.linked) {
-          const value = mutate ? desc.get ? desc.get.call(parent) : desc.value : parent ? parent[key] : void 0;
+          const value = mutate ? desc.get ? desc.get.call(parent) : desc.value : (parent ? parent[key] : void 0) ?? specObject[key];
           return isPromise(value) ? value.then(setter) : setter(value);
         } else
           return valueSymbol in resolved ? resolved[valueSymbol] : resolved;
@@ -236,8 +246,10 @@
     const resolved = updateIsObject && "value" in update ? update.value : update;
     const isObject = resolved && resolved?.constructor?.name === "Object";
     const clone = typeof resolved === "symbol" ? resolved : isObject ? { ...resolved } : Array.isArray(resolved) ? [...resolved] : objectify(resolvedKey, resolved);
-    if (isObject)
-      registerAllProperties(clone, specValue, funcs, options, path, [...history, value ?? resolved]);
+    const historyObject = value ?? resolved;
+    const specIsObject = specValue && typeof specValue === "object";
+    if (isObject || specIsObject)
+      registerAllProperties(clone, specValue, funcs, options, path, [...history, historyObject], { properties: isObject });
     return clone;
   };
   var keys = (object2, specObject, keyUpdateFunction, options) => registerAllProperties(object2, specObject, { keys: keyUpdateFunction }, options);
@@ -255,6 +267,7 @@
           let acc = this.config.specification = {};
           spec.forEach((o) => transfer(acc, o));
         }
+        this.specification = this.config.specification;
       };
       this.apply = (o, options) => apply(o, this.config.specification, this.config, options);
       this.keys = (o, options) => keys(o, this.config.specification, this.config.keys, options);
@@ -303,8 +316,6 @@
   var model = new Model({
     values: (key, value, spec) => {
       const o = presets_exports.objectify(key, value);
-      if (spec?.type)
-        return transfer(o, spec, { enumerable: false });
       return o;
     },
     keys: (key, spec) => {
@@ -344,9 +355,9 @@
   console.log("--------- Updating object value ---------");
   console.log("Object value (before)", output.Object);
   output.Object = {
-    number: 1,
-    string: "hi there",
-    boolean: true
+    number: Math.pow(2, 32),
+    string: "this is a string",
+    boolean: "Not a boolean..."
   };
   console.log("Object value (after)", output.Object);
   console.log("--------- Adding nested property to Typed Array ---------");

@@ -1,16 +1,24 @@
 import { newKeySymbol, removeSymbol, valueSymbol } from "./globals"
 import { objectify } from "./presets"
 import { getAllPropertyNames } from "./properties"
-import { transfer } from "./transfer"
 import { ArbitraryObject, HistoryType, InternalMetadata, KeyType, PathType, RegistrationOptions, UpdateFunctions } from "./types"
 
 export const isPromise = (o: any) => o && typeof o === 'object' && typeof o.then === 'function'
 
+function isNumeric (n: any) {
+    return !isNaN(parseFloat(n)) && isFinite(n)
+}
+
+
+type ToIterateType = {
+    specification?: boolean,
+    properties?: boolean
+}
 
 const unresolved = Symbol('unresolved')
 
 
-const registerAllProperties = (o, specObject: ArbitraryObject, funcs: UpdateFunctions = {}, options: RegistrationOptions = {}, path: PathType = [], history: HistoryType = []) => {
+const registerAllProperties = (o, specObject: ArbitraryObject, funcs: UpdateFunctions = {}, options: RegistrationOptions = {}, path: PathType = [], history: HistoryType = [], toIterate:ToIterateType = {}) => {
 
     const first = history.length === 0
     if (first) history.push(o) // Add original object to history
@@ -18,12 +26,16 @@ const registerAllProperties = (o, specObject: ArbitraryObject, funcs: UpdateFunc
     const acc = (willUpdateOriginal) ? history[history.length - 1] : (first ? options.target ?? {} : o) // Use original object if clone is disabled
 
     const properties = new Set([...getAllPropertyNames(o), ...Object.getOwnPropertySymbols(o)]) // Get all properties, enumerable or otherwise
-    const specKeys = new Set([...getAllPropertyNames(specObject), ...Object.getOwnPropertySymbols(specObject)])
+    properties.delete('constructor') // No constructor...
+
+    const specKeys = new Set([...getAllPropertyNames(specObject), ...(specObject ? Object.getOwnPropertySymbols(specObject) : [])])
 
     const registeredProperties = new Set(specKeys)
 
     const internalMetadata = { willUpdateOriginal }
     const register = (key: KeyType, historyArr = history) => {
+        if (key === valueSymbol) return // Don't register values that are handled by the spec
+        if (typeof key === 'string' && isNumeric(key)) return // Don't register numeric properties
         const registered = registerPropertyUpdate(key, path, historyArr, acc, funcs, specObject, options, internalMetadata)
         registered.forEach(key => {
             specKeys.delete(key)
@@ -33,10 +45,10 @@ const registerAllProperties = (o, specObject: ArbitraryObject, funcs: UpdateFunc
 
     let toReturn = acc
 
-    properties.forEach((k) => register(k)) // Try to register properties provided by the user
-    specKeys.forEach((k) => register(k)) // Register extra specification properties
+    if (toIterate.properties !== false) properties.forEach((k) => register(k)) // Try to register properties provided by the user
+    if (toIterate.specification !== false) specKeys.forEach((k) => register(k)) // Register extra specification properties
 
-    Object.defineProperty(acc, newKeySymbol, {
+    else Object.defineProperty(acc, newKeySymbol, {
         value: (key: KeyType, value: any) => {
             const historyCopy = [...history]
             const parentCopy = historyCopy[historyCopy.length - 1] = (willUpdateOriginal ? o : {...o}) // Copy the parent object to avoid adding new keys
@@ -126,9 +138,9 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
     const type = typeof _update
 
     // Allow for ignoring a property (including current and previous values)
-    const silence = (_update == undefined || _update === removeSymbol || ( type !== 'string' && type !== 'symbol')) 
+    const silence = (_update == undefined || _update === removeSymbol || (type !== 'string' && type !== 'symbol' && (type === 'object' && (!(_update instanceof String) && !(_update instanceof Number)))))
 
-    const resolvedKey = (silence) ? key : _update    
+    const resolvedKey = (silence) ? key : _update  as KeyType  
 
     if (silence && !links) {
         delete acc[key]
@@ -142,13 +154,21 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
 
         // Set a hidden setter so that updates to the property conform to the model
         function setter(value) {
-            const original = resolved
-            resolved = onValueUpdate(resolvedKey, value, updatedPath, history, funcs, specObject, options, internalMetadata)
-            if (valueSymbol in resolved) {
-                const copy = transfer({}, original)
-                transfer(resolved, copy)
+
+            // Preprocessing values received from the specification
+            // NOTE: Do not set non-standard objects with metadata...
+            if (value && typeof value === 'object') {
+                    // if (!(fromSpecSymbol in value)) console.warn('May be processing a value that has metadata on it...')
+                    // else console.error('FROM SPEC')
+                    // delete value[fromSpecSymbol]
+                    if (valueSymbol in value) value =  value[valueSymbol] // If the value is a model, get the actual value
+                     if (value && typeof value.valueOf === 'function') value = value.valueOf() // If the value is a primitive, get the actual value
+                // } else console.error('Not in spec', value, valueSymbol in value, value[valueSymbol])
+
             }
 
+            // Trigger value update response
+            resolved = onValueUpdate(resolvedKey, value, updatedPath, history, funcs, specObject, options, internalMetadata)
             return (valueSymbol in resolved) ? resolved[valueSymbol] : resolved // return actual value (null / undefined)
         }
 
@@ -156,7 +176,7 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
         function getter () {
             if (silence) return
             else if (resolved === unresolved || internalMetadata.linked) {
-                const value = mutate ? (desc.get ? desc.get.call(parent) : desc.value) : (parent ? parent[key] : undefined)
+                const value = mutate ? (desc.get ? desc.get.call(parent) : desc.value) : (parent ? parent[key] : undefined) ?? specObject[key] //transfer({[fromSpecSymbol]: true}, specObject[key]) // Get original from specification as a backup
                 return isPromise(value) ? value.then(setter) : setter(value)
             }
             else return (valueSymbol in resolved) ? resolved[valueSymbol] : resolved // return actual value (null / undefined)
@@ -186,7 +206,9 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
 const onValueUpdate = (resolvedKey: KeyType, value: any, path: PathType, history: HistoryType, funcs: UpdateFunctions, specObject: any, options: RegistrationOptions, internalMetadata: InternalMetadata) => {
     const key = path[path.length - 1]
 
-    const specValue = (resolvedKey in specObject) ? (specObject[resolvedKey] ?? specObject[key]) :  specObject[key] // Fallback to original key 
+    // if (value?.[attachedSpecSymbol]) specObject[resolvedKey] = value[attachedSpecSymbol] // Allow spec extensions
+
+    const specValue = ((resolvedKey in specObject) ? (specObject[resolvedKey] ?? specObject[key]) :  specObject[key]) // Fallback to original key 
     const update = funcs.values ? funcs.values(key, value, specValue, path, history) : value
 
     const updateIsObject = (update && typeof update  === 'object')
@@ -202,8 +224,12 @@ const onValueUpdate = (resolvedKey: KeyType, value: any, path: PathType, history
             )
         )
 
-    // Register properties on simple objects
-    if (isObject) registerAllProperties(clone, specValue, funcs, options, path, [...history, value ?? resolved]) // Ensure history is full of unmutated objects
+    const historyObject = value ?? resolved
+    const specIsObject = (specValue && typeof specValue === 'object')
+
+
+    // Register properties. Only from the specification if not a simple object
+    if (isObject || specIsObject) registerAllProperties(clone, specValue, funcs, options, path, [...history, historyObject], {  properties: isObject }) // Ensure history is full of unmutated objects
 
     return clone
 

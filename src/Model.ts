@@ -10,6 +10,7 @@ export type ModelConfig = {
 export class Model {
 
     config: ModelConfig = {}
+    specification?: ArbitraryObject
 
     constructor(config: ModelConfig) {
         this.set(config)
@@ -24,6 +25,8 @@ export class Model {
             let acc = this.config.specification = {}
             spec.forEach(o => transfer(acc, o))
         }
+
+        this.specification = this.config.specification
     }
 
     // Apply model keys AND values to the object
