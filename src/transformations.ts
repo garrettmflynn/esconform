@@ -71,11 +71,28 @@ const registerAllProperties = (o, specObject: ArbitraryObject, funcs: UpdateFunc
 
         
         if (!(newKeySymbol in acc)) Object.defineProperty(acc, newKeySymbol, {
-            value: (key: KeyType, value: any, spec?: ArbitraryObject) => {
+            value: (
+                key: KeyType, 
+                value: any, 
+                desc?: {
+                    enumerable: PropertyDescriptor['enumerable'],
+                    configurable: PropertyDescriptor['configurable'],
+                    writable: PropertyDescriptor['writable'],
+                    get: PropertyDescriptor['get'],
+                    set: PropertyDescriptor['set'],
+                }
+            ) => {
                 const historyCopy = [...history]
                 const parentCopy = historyCopy[historyCopy.length - 1] = (willUpdateOriginal ? o : {...o}) // Copy the parent object to avoid adding new keys
                 parentCopy[key] = value
-                specObject[key] = spec // Ensure the specification object is extended
+
+                // Transfer property description (or ensure the new key is defined)
+                if (desc) {
+                    let propertyDesc = {...desc} as PropertyDescriptor
+                    if (!desc.get && !desc.set) propertyDesc.value = value
+                    Object.defineProperty(specObject, key, propertyDesc)
+                } else specObject[key] = undefined // Ensure the specification object is extended
+
                 register(key, historyCopy)
             },
             writable: false,
@@ -162,12 +179,13 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
     const _update = isObject ? update.value : update
     const specKey =  getSpecKey(_update, specObject, key)
     const specDesc = specKey ? {...Object.getOwnPropertyDescriptor(specObject, specKey)} as PropertyDescriptor : {}
-    const enumerable = specDesc.enumerable ?? desc.enumerable ?? true // Default to existing. Otherwise true if undefined
+    const enumerable = (isObject && 'enumerable' in update) ? update.enumerable : specDesc.enumerable ?? false // Default to existing. Otherwise true if undefined
+
 
     const type = typeof _update
 
     // Allow for ignoring a property (including current and previous values)
-    const silence = !hasSpecValue(_update, specObject, key)  || (_update == undefined || _update === removeSymbol || (type !== 'string' && type !== 'symbol' && (type === 'object' && (!(_update instanceof String) && !(_update instanceof Number)))))
+    const silence = (isObject && 'silence' in update) ? update.silence : (!hasSpecValue(_update, specObject, key) || (_update == undefined || _update === removeSymbol || (type !== 'string' && type !== 'symbol' && (type === 'object' && (!(_update instanceof String) && !(_update instanceof Number))))))
     const resolvedKey = (silence) ? key : _update  as KeyType  
 
     if (silence && !links) {

@@ -9,7 +9,7 @@ export type ValueUpdateMetadata<ValueType> = {
 }
 
 export type KeyUpdateMetadata = {
-    enumerable?: boolean,
+    silence?: boolean,
     links?: NewKeyType[]
 } & ValueUpdateMetadata<KeyUpdate>
 

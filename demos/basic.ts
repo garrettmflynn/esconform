@@ -71,12 +71,9 @@ const model = new Model({
     values: (key, value, spec) => presets.objectify(key, value),
 
     // Transform keys to uppercase
-    keys: (key, spec) => {
+    keys: (key) => {
         if (typeof key === 'string') key = key[0].toUpperCase() + key.slice(1)
-        return {
-            value: key,
-            enumerable: spec[key] ? true : false
-        }
+        return key
     },
 
     specification
@@ -151,9 +148,9 @@ console.log('Undefined value (after)',output.Undefined)
 
 
 console.log('--------- Adding new key through special symbol ---------')
-output[newKeySymbol]('test', 'AHHH')
+output[newKeySymbol]('test', 'AHHH', { enumerable: false, configurable: true })
 console.log('test', output.Test)
-output[newKeySymbol]('test', 'OOF')
+output[newKeySymbol]('test', 'OOF', { enumerable: false })
 console.log('test', output.Test)
 output.Test = 'EEK'
 console.log('test', output.Test)

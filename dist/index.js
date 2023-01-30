@@ -9,9 +9,9 @@
   var valueSymbol = Symbol("value");
   var removeSymbol = Symbol("remove");
   var newKeySymbol = Symbol("newKey");
+  var attachedSpecSymbol = Symbol("hasAttachedSpec");
   var fromSpecSymbol = Symbol("fromSpec");
   var propertiesRegistrySymbol = Symbol("propertiesRegistry");
-  var attachedSpecSymbol = Symbol("hasAttachedSpec");
 
   // src/presets.ts
   var presets_exports = {};
@@ -152,11 +152,17 @@
         specKeys.forEach((k) => register(k));
       if (!(newKeySymbol in acc))
         Object.defineProperty(acc, newKeySymbol, {
-          value: (key, value, spec) => {
+          value: (key, value, desc) => {
             const historyCopy = [...history];
             const parentCopy = historyCopy[historyCopy.length - 1] = willUpdateOriginal ? o : { ...o };
             parentCopy[key] = value;
-            specObject[key] = spec;
+            if (desc) {
+              let propertyDesc = { ...desc };
+              if (!desc.get && !desc.set)
+                propertyDesc.value = value;
+              Object.defineProperty(specObject, key, propertyDesc);
+            } else
+              specObject[key] = void 0;
             register(key, historyCopy);
           },
           writable: false,
@@ -217,9 +223,9 @@
     const _update = isObject ? update.value : update;
     const specKey = getSpecKey(_update, specObject, key);
     const specDesc = specKey ? { ...Object.getOwnPropertyDescriptor(specObject, specKey) } : {};
-    const enumerable = specDesc.enumerable ?? desc.enumerable ?? true;
+    const enumerable = isObject && "enumerable" in update ? update.enumerable : specDesc.enumerable ?? false;
     const type = typeof _update;
-    const silence = !hasSpecValue(_update, specObject, key) || (_update == void 0 || _update === removeSymbol || type !== "string" && type !== "symbol" && (type === "object" && (!(_update instanceof String) && !(_update instanceof Number))));
+    const silence = isObject && "silence" in update ? update.silence : !hasSpecValue(_update, specObject, key) || (_update == void 0 || _update === removeSymbol || type !== "string" && type !== "symbol" && (type === "object" && (!(_update instanceof String) && !(_update instanceof Number))));
     const resolvedKey = silence ? key : _update;
     if (silence && !links) {
       delete acc[key];
@@ -355,13 +361,10 @@
   });
   var model = new Model({
     values: (key, value, spec) => presets_exports.objectify(key, value),
-    keys: (key, spec) => {
+    keys: (key) => {
       if (typeof key === "string")
         key = key[0].toUpperCase() + key.slice(1);
-      return {
-        value: key,
-        enumerable: spec[key] ? true : false
-      };
+      return key;
     },
     specification
   });
@@ -414,9 +417,9 @@
   output.Undefined = "should have metadata";
   console.log("Undefined value (after)", output.Undefined);
   console.log("--------- Adding new key through special symbol ---------");
-  output[newKeySymbol]("test", "AHHH");
+  output[newKeySymbol]("test", "AHHH", { enumerable: false, configurable: true });
   console.log("test", output.Test);
-  output[newKeySymbol]("test", "OOF");
+  output[newKeySymbol]("test", "OOF", { enumerable: false });
   console.log("test", output.Test);
   output.Test = "EEK";
   console.log("test", output.Test);
