@@ -1,4 +1,9 @@
-import { newKeySymbol, removeSymbol, valueSymbol } from "./globals"
+import { 
+    newKeySymbol, 
+    // propertiesRegistrySymbol, 
+    removeSymbol, 
+    valueSymbol 
+} from "./globals"
 import { objectify } from "./presets"
 import { getAllPropertyNames } from "./properties"
 import { ArbitraryObject, HistoryType, InternalMetadata, KeyType, PathType, RegistrationOptions, UpdateFunctions } from "./types"
@@ -33,10 +38,10 @@ const registerAllProperties = (o, specObject: ArbitraryObject, funcs: UpdateFunc
     const registeredProperties = new Set(specKeys)
 
     const internalMetadata = { willUpdateOriginal }
-    const register = (key: KeyType, historyArr = history) => {
+    const register = (key: KeyType | number, historyArr = history) => {
         if (key === valueSymbol) return // Don't register values that are handled by the spec
         if (typeof key === 'string' && isNumeric(key)) return // Don't register numeric properties
-        const registered = registerPropertyUpdate(key, path, historyArr, acc, funcs, specObject, options, internalMetadata)
+        const registered = registerPropertyUpdate(key as KeyType, path, historyArr, acc, funcs, specObject, options, internalMetadata)
         registered.forEach(key => {
             specKeys.delete(key)
             registeredProperties.add(key)
@@ -48,7 +53,8 @@ const registerAllProperties = (o, specObject: ArbitraryObject, funcs: UpdateFunc
     if (toIterate.properties !== false) properties.forEach((k) => register(k)) // Try to register properties provided by the user
     if (toIterate.specification !== false) specKeys.forEach((k) => register(k)) // Register extra specification properties
 
-    else Object.defineProperty(acc, newKeySymbol, {
+    
+    Object.defineProperty(acc, newKeySymbol, {
         value: (key: KeyType, value: any) => {
             const historyCopy = [...history]
             const parentCopy = historyCopy[historyCopy.length - 1] = (willUpdateOriginal ? o : {...o}) // Copy the parent object to avoid adding new keys
@@ -84,6 +90,8 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
     const parent = history[history.length - 1]
     const updatedPath = [...path, key]
     let resolved: any = unresolved
+    // if (!acc[propertiesRegistrySymbol]) Object.defineProperty(acc, propertiesRegistrySymbol, {value: {}, enumerable: false, configurable: false})
+
 
     let registered: KeyType[] = [] // A list of keys that have been registered
 
@@ -168,6 +176,7 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
             }
 
             // Trigger value update response
+            // acc[propertiesRegistrySymbol][resolvedKey] = 
             resolved = onValueUpdate(resolvedKey, value, updatedPath, history, funcs, specObject, options, internalMetadata)
             return (valueSymbol in resolved) ? resolved[valueSymbol] : resolved // return actual value (null / undefined)
         }
@@ -182,7 +191,6 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
             else return (valueSymbol in resolved) ? resolved[valueSymbol] : resolved // return actual value (null / undefined)
         }
 
-
         // Enhanced getter and setter based on existing property descriptor
         if (!mutate || desc?.configurable !== false) {
             Object.defineProperty(acc, resolvedKey, { 
@@ -196,6 +204,8 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
             })
         }
     }
+
+    // acc[propertiesRegistrySymbol][resolvedKey] = resolved // Store the resolved value
 
     // Delete old key
     if (key !== resolvedKey) delete acc[key] 

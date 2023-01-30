@@ -9,6 +9,8 @@
   var valueSymbol = Symbol("value");
   var removeSymbol = Symbol("remove");
   var newKeySymbol = Symbol("newKey");
+  var fromSpecSymbol = Symbol("fromSpec");
+  var propertiesRegistrySymbol = Symbol("propertiesRegistry");
   var attachedSpecSymbol = Symbol("hasAttachedSpec");
 
   // src/presets.ts
@@ -80,16 +82,18 @@
   };
 
   // src/presets.ts
-  var objectify = (key, value, convertUndefined = true) => {
+  var objectify = (key, value) => {
     const constructor = value?.constructor;
     if (constructor) {
       let og = value;
       value = new constructor(value);
       value = transfer(value, og);
-    } else if (convertUndefined && !value) {
-      const og = value;
-      value = /* @__PURE__ */ Object.create(null);
-      Object.defineProperty(value, valueSymbol, { value: og });
+    } else {
+      if (!value) {
+        const og = value;
+        value = /* @__PURE__ */ Object.create(null);
+        Object.defineProperty(value, valueSymbol, { value: og });
+      }
     }
     return value;
   };
@@ -112,6 +116,8 @@
     const registeredProperties = new Set(specKeys);
     const internalMetadata = { willUpdateOriginal };
     const register = (key, historyArr = history) => {
+      if (key === valueSymbol)
+        return;
       if (typeof key === "string" && isNumeric(key))
         return;
       const registered = registerPropertyUpdate(key, path, historyArr, acc, funcs, specObject, options, internalMetadata);
@@ -125,19 +131,16 @@
       properties.forEach((k) => register(k));
     if (toIterate.specification !== false)
       specKeys.forEach((k) => register(k));
-    if (newKeySymbol in acc)
-      console.error("Already transferred the newKeySymbol property");
-    else
-      Object.defineProperty(acc, newKeySymbol, {
-        value: (key, value) => {
-          const historyCopy = [...history];
-          const parentCopy = historyCopy[historyCopy.length - 1] = willUpdateOriginal ? o : { ...o };
-          parentCopy[key] = value;
-          register(key, historyCopy);
-        },
-        writable: false,
-        configurable: false
-      });
+    Object.defineProperty(acc, newKeySymbol, {
+      value: (key, value) => {
+        const historyCopy = [...history];
+        const parentCopy = historyCopy[historyCopy.length - 1] = willUpdateOriginal ? o : { ...o };
+        parentCopy[key] = value;
+        register(key, historyCopy);
+      },
+      writable: false,
+      configurable: false
+    });
     if (globalThis.Proxy) {
       toReturn = new Proxy(acc, {
         set(target2, property, value) {
@@ -208,7 +211,7 @@
         if (value && typeof value === "object") {
           if (valueSymbol in value)
             value = value[valueSymbol];
-          if (typeof value.valueOf === "function")
+          if (value && typeof value.valueOf === "function")
             value = value.valueOf();
         }
         resolved = onValueUpdate(resolvedKey, value, updatedPath, history, funcs, specObject, options, internalMetadata);
