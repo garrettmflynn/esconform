@@ -112,7 +112,7 @@ const registerAllProperties = (o, specObject: ArbitraryObject, funcs: UpdateFunc
                     return false
                 },
             })
-        } else console.warn('[esmodel] Proxy not available. Unregistered property setters will not be intercepted.')
+        } else console.warn('[esconform] Proxy not available. Unregistered property setters will not be intercepted.')
 
         return toReturn
     } 
@@ -279,7 +279,6 @@ const onValueUpdate = (resolvedKey: KeyType, value: any, path: PathType, history
                 : objectify(resolvedKey, resolved) // Convert primitives to objects
             )
         )
-
 
     const historyObject = value ?? resolved
     const specIsObject = (specValue && typeof specValue === 'object')

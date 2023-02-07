@@ -1,8 +1,6 @@
 
 // ------------ Get All Property Names ------------
 
-import { KeyType } from "./types";
-
 const rawProperties = {}
 const globalObjects = [
     'Object', 

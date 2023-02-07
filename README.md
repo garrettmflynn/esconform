@@ -1,5 +1,5 @@
-# esmodel
- `esmodel`  is a JavaScript library that allows you to conform JavaScript objects to an external model. 
+# esconform
+ `esconform`  is a JavaScript library that allows you to conform JavaScript objects to an external model. 
 
  It allows you to transform the **keys** of an object, then uses `setters` to ensure that updated **values** to the output object are transformed. Both transformation functions can use an external **specification** to determine the validity of the transformation.
 
