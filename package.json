@@ -1,17 +1,14 @@
 {
   "name": "esconform",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": " Conform JavaScript objects to an external model",
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
+  "types": "dist/src/index.d.ts",
+  "type": "module",
   "files": [
     "dist"
   ],
-  "browser": {
-    "dist/index.js": "dist/index.js",
-    "dist/index.esm.js": "dist/index.esm.js"
-  },
-  "type": "module",
   "scripts": {
     "start": "tinybuild --path tinybuild.demo.js",
     "build": "tinybuild build"
@@ -24,6 +21,7 @@
   "license": "AGPL-3.0-or-later",
   "dependencies": {},
   "devDependencies": {
-    "tinybuild": "^0.3.169"
+    "tinybuild": "^0.3.169",
+    "typescript": "4.6.4"
   }
 }
