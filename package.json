@@ -1,10 +1,14 @@
 {
   "name": "esconform",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": " Conform JavaScript objects to an external model",
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
   "types": "dist/src/index.d.ts",
+  "exports": {
+    "node": "./dist/index.node.js",
+    "import": "./dist/index.esm.js"
+  },
   "type": "module",
   "files": [
     "dist"
