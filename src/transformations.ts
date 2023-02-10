@@ -179,7 +179,7 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
     const _update = isObject ? update.value : update
     const specKey =  getSpecKey(_update, specObject, key)
     const specDesc = specKey ? {...Object.getOwnPropertyDescriptor(specObject, specKey)} as PropertyDescriptor : {}
-    const enumerable = (isObject && 'enumerable' in update) ? update.enumerable : specDesc.enumerable ?? false // Default to existing. Otherwise true if undefined
+    const enumerable = (isObject && 'enumerable' in update) ? update.enumerable : specDesc.enumerable ?? desc.enumerable ?? false // Default to existing. Otherwise true if undefined
 
 
     const type = typeof _update
@@ -193,8 +193,8 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
         return registered
     } else registered.push(resolvedKey)
 
-     const existingDesc = Object.getOwnPropertyDescriptor(acc, resolvedKey)
-     const exists = existingDesc && existingDesc.set && existingDesc.configurable !== true
+     const existingDesc = Object.getOwnPropertyDescriptor(acc, resolvedKey) ?? {}
+     const exists = existingDesc.set && existingDesc.configurable !== true
      if (exists) acc[resolvedKey] = parent[key] // If the property is already defined, set the value to the original value
     else {
 
@@ -244,7 +244,7 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
                     return setter(value);
                 } : setter,
                 enumerable: silence ? false : enumerable,
-                configurable: false
+                configurable: desc.configurable // Pass on configurability
             })
         }
     }
