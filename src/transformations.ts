@@ -7,6 +7,7 @@ import {
 } from "./globals"
 import { objectify } from "./presets"
 import { getAllPropertyNames } from "./properties"
+import { transfer } from "./transfer"
 import { ArbitraryObject, HistoryType, InternalMetadata, KeyType, PathType, RegistrationOptions, UpdateFunctions } from "./types"
 
 export const isPromise = (o: any) => o && typeof o === 'object' && typeof o.then === 'function'
@@ -103,13 +104,9 @@ const registerAllProperties = (o, specObject: ArbitraryObject, funcs: UpdateFunc
         if (globalThis.Proxy) {
             toReturn = new Proxy(acc, {
                 set(target, property, value) {
+                    if (registeredProperties.has(property)) return Reflect.set(target, property, value) // Only set registered properties
+                    return true
                     
-                    if (registeredProperties.has(property)){
-                        target[property] = value // Only set registered properties
-                        return true
-                    }
-
-                    return false
                 },
             })
         } else console.warn('[esconform] Proxy not available. Unregistered property setters will not be intercepted.')
@@ -226,7 +223,7 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
             let toReturn;
             if (silence) return
             else if (resolved === unresolved || internalMetadata.linked) {
-                const value = mutate ? (desc.get ? desc.get.call(parent) : desc.value) : (parent ? parent[key] : undefined) ?? getSpecValue(resolvedKey, specObject, key) // Get original from specification as a backup
+                const value = mutate ? (desc.get ? desc.get.call(parent) : desc.value) : (parent ? parent[key] : undefined) //?? getSpecValue(resolvedKey, specObject, key) // Get original from specification as a backup
                 toReturn = isPromise(value) ? value.then(setter) : setter(value)
             }
             else toReturn = (valueSymbol in resolved) ? resolved[valueSymbol] : resolved // return actual value (null / undefined)
@@ -236,7 +233,7 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
         }
 
         // Enhanced getter and setter based on existing property descriptor
-        if (!mutate || desc?.configurable !== false) {
+        if ((!mutate && Object.getOwnPropertyDescriptor(acc, resolvedKey)?.configurable !== false) || desc?.configurable !== false) {
             Object.defineProperty(acc, resolvedKey, { 
                 get: getter,  // Handle promises
                 set: desc.set ? (value) => {
@@ -265,7 +262,14 @@ const onValueUpdate = (resolvedKey: KeyType, value: any, path: PathType, history
 
     // Resolve the latest value
     const specValue = getSpecValue(resolvedKey, specObject, key) // Fallback to original key 
-    const update = funcs.values ? funcs.values(key, value, specValue, path, history) : value
+    
+    let update = funcs.values ? funcs.values(key, value, specValue, path, history) : value
+
+    // Mirror the specification if no update is provided
+    if (options.mirror) {
+        if (update === undefined) update = specValue
+        else if (update && typeof update === 'object' && valueSymbol in update && update[valueSymbol] === undefined) update = transfer({[valueSymbol]: specValue}, update) // transfer anything already on the object
+    }
 
     const updateIsObject = (update && typeof update  === 'object')
     const resolved = (updateIsObject && 'value' in update) ? update.value : update

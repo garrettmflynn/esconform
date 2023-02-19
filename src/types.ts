@@ -26,6 +26,7 @@ export type HistoryType = any[]
 
 export type RegistrationOptions = {
     target?: ArbitraryObject,
+    mirror?: boolean,
 }
 
 export type InternalMetadata = {

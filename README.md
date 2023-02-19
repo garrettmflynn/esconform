@@ -4,6 +4,8 @@
  It allows you to transform the **keys** of an object, then uses `setters` to ensure that updated **values** to the output object are transformed. Both transformation functions can use an external **specification** to determine the validity of the transformation.
 
  All values besides **null** and **undefined** are transformed to their corresponding JavaScript Objects (e.g. this 'string' will be transformed into a new String('string')).
+
+ > **Note:** Users have to manually specify that spec values should be returned if actual values are undefined. You can also set `mirror: true`.
  
  ### Usage
 
@@ -20,7 +22,10 @@ Object.defineProperty(specification, 'address', { value: {type: 'string'} })
 
 const newModel = new Model({
 
-    values: (key, value, spec) => value,
+    values: (key, value, spec) => {
+        if (value === undefined) value = spec // Default to the specification (user-defined)
+        return value
+    },
 
     keys: (key, spec) => {
 
@@ -44,7 +49,7 @@ const newModel = new Model({
         return info
     },
 
-    specification
+    specification,
 })
 
 const person = {
@@ -54,7 +59,12 @@ const person = {
     extra: 'THIS IS REALLY ANNOYING'
 }
 
-const john = model.apply(person)
+const john = model.apply(
+    person,
+    {
+        mirror: true // Mirror all values in the specification that aren't present on provided value
+    }
+)
 
 // Properties are transformed based on the specification
 console.log('firstName', john.firstName) // Result: John

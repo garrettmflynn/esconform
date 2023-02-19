@@ -68,7 +68,10 @@ define('promise', (value) => {
 const model = new Model({
 
     // Transform values to objects
-    values: (key, value, spec) => presets.objectify(key, value),
+    values: (key, value, spec) => {
+        // if (value === undefined) value = spec
+        return presets.objectify(key, value)
+    },
 
     // Transform keys to uppercase
     keys: (key) => {
@@ -81,7 +84,8 @@ const model = new Model({
 
 const output = model.apply(
     object, 
-    // { clone: false }
+    // { target: object }
+    { mirror : true}
 )
 
 console.log('Got!', output)
@@ -144,7 +148,7 @@ window.onmousedown = () => checkPromise()
 console.log('--------- Setting undefined ---------')
 console.log('Undefined value (before)', output.Undefined)
 output.Undefined = 'should have metadata'
-console.log('Undefined value (after)',output.Undefined)
+console.log('Undefined value (after)',output.Undefined, output.Undefined?.Type, output.Undefined?.type)
 
 
 console.log('--------- Adding new key through special symbol ---------')
