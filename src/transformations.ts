@@ -86,6 +86,7 @@ const registerAllProperties = (o, specObject: ArbitraryObject, funcs: UpdateFunc
                 const historyCopy = [...history]
                 const parentCopy = historyCopy[historyCopy.length - 1] = (willUpdateOriginal ? o : {...o}) // Copy the parent object to avoid adding new keys
                 parentCopy[key] = value
+                
 
                 // Transfer property description (or ensure the new key is defined)
                 if (desc) {
@@ -103,7 +104,7 @@ const registerAllProperties = (o, specObject: ArbitraryObject, funcs: UpdateFunc
         // If Proxy is available, use it to intercept property setters
         if (globalThis.Proxy) {
             toReturn = new Proxy(acc, {
-                set(target, property, value) {
+                set(target: any, property: string, value: any) {
                     if (registeredProperties.has(property)) return Reflect.set(target, property, value) // Only set registered properties
                     return true
                     
@@ -155,7 +156,7 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
                     return onUpdate(value)
                 }
 
-                function setter(value) {
+                function setter(value: any) {
                     value = onValueUpdate(o.key, value, [...path, o.key], history, funcs, specObject, options, internalMetadata)
                     return value
                 }
@@ -196,7 +197,7 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
     else {
 
         // Set a hidden setter so that updates to the property conform to the model
-        function setter(value) {
+        function setter(value: any) {
 
             // Preprocessing values received from the specification
             // NOTE: Do not set non-standard objects with metadata...
@@ -228,7 +229,6 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
             }
             else toReturn = (valueSymbol in resolved) ? resolved[valueSymbol] : resolved // return actual value (null / undefined)
 
-            // console.error('Returning from getter', resolvedKey, toReturn)
             return toReturn
         }
 
@@ -272,6 +272,7 @@ const onValueUpdate = (resolvedKey: KeyType, value: any, path: PathType, history
     }
 
     const updateIsObject = (update && typeof update  === 'object')
+    if (updateIsObject && 'value' in update) console.error('Getting value from passed value', update) // TODO: May not actually need this...
     const resolved = (updateIsObject && 'value' in update) ? update.value : update
 
     const isObject = resolved && resolved?.constructor?.name === 'Object'
