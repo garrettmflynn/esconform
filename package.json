@@ -1,6 +1,6 @@
 {
   "name": "esconform",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": " Conform JavaScript objects to an external model",
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
