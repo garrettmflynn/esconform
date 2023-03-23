@@ -17,7 +17,7 @@ export type KeyUpdate =  any | KeyType | undefined
 
 export type UpdateFunctions = {
     keys?: (key: KeyType, specObject: ArbitraryObject, path: PathType, history: HistoryType) => KeyUpdate | KeyUpdateMetadata,
-    values?: (key: KeyType, value: any, specValue: ArbitraryObject[keyof ArbitraryObject], path: PathType, history: HistoryType) => any | ValueUpdateMetadata<any>,
+    values?: (key: KeyType, value: any, specValue: ArbitraryObject[keyof ArbitraryObject], specObject: ArbitraryObject, path: PathType, history: HistoryType) => any | ValueUpdateMetadata<any>,
 }
 export type ArbitraryObject = {[x:KeyType]: any}
 export type KeyType = string | symbol

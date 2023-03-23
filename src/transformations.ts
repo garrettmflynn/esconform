@@ -263,7 +263,7 @@ const onValueUpdate = (resolvedKey: KeyType, value: any, path: PathType, history
     // Resolve the latest value
     const specValue = getSpecValue(resolvedKey, specObject, key) // Fallback to original key 
     
-    let update = funcs.values ? funcs.values(key, value, specValue, path, history) : value
+    let update = funcs.values ? funcs.values(key, value, specValue, specObject, path, history) : value
 
     // Mirror the specification if no update is provided
     if (options.mirror) {
