@@ -36,7 +36,7 @@ function getSpecValue(key: KeyType, specObject: ArbitraryObject, fallbackKey: Ke
     return ((key in specObject) ? (specObject[key] ?? specObject[fallbackKey]) :  specObject[fallbackKey])
 }
 
-const registerAllProperties = (o, specObject: ArbitraryObject, funcs: UpdateFunctions = {}, options: RegistrationOptions = {}, path: PathType = [], history: HistoryType = [], toIterate:ToIterateType = {}) => {
+const registerAllProperties = (o: any, specObject: ArbitraryObject, funcs: UpdateFunctions = {}, options: RegistrationOptions = {}, path: PathType = [], history: HistoryType = [], toIterate:ToIterateType = {}) => {
 
 
     const first = history.length === 0
@@ -297,10 +297,10 @@ const onValueUpdate = (resolvedKey: KeyType, value: any, path: PathType, history
 }
 
 // Apply specification to the keys of this object
-export const keys = (object: any, specObject: any, keyUpdateFunction: UpdateFunctions['keys'], options: RegistrationOptions) => registerAllProperties(object, specObject, { keys: keyUpdateFunction }, options)
+export const keys = (object: any, specObject: any, keyUpdateFunction: UpdateFunctions['keys'], options: RegistrationOptions = {}) => registerAllProperties(object, specObject, { keys: keyUpdateFunction }, options)
 
 // Apply specification to the keys AND values of this object
-export const apply = (object: any, specObject: any, updateFunctions: UpdateFunctions, options: RegistrationOptions) => registerAllProperties(object, specObject, updateFunctions, options)
+export const apply = (object: any, specObject: any, updateFunctions: UpdateFunctions, options: RegistrationOptions = {}) => registerAllProperties(object, specObject, updateFunctions, options)
 
 // Apply specification to the values of this object
-export const values = (object: any, specObject: any, valueUpdateFunction: UpdateFunctions['values'], options: RegistrationOptions) => registerAllProperties(object, specObject, { values: valueUpdateFunction }, options)
+export const values = (object: any, specObject: any, valueUpdateFunction: UpdateFunctions['values'], options: RegistrationOptions = {}) => registerAllProperties(object, specObject, { values: valueUpdateFunction }, options)

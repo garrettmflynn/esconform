@@ -30,13 +30,13 @@ export class Model {
     }
 
     // Apply model keys AND values to the object
-    apply = (o, options?: RegistrationOptions) => transformations.apply(o, this.config.specification, this.config, options)
+    apply = (o: any, options?: RegistrationOptions) => transformations.apply(o, this.config.specification, this.config, options)
 
     // Apply model keys to the object
-    keys = (o, options?: RegistrationOptions) => transformations.keys(o, this.config.specification, this.config.keys, options)
+    keys = (o: any, options?: RegistrationOptions) => transformations.keys(o, this.config.specification, this.config.keys, options)
 
     // Apply model values to the object
-    values = (o, options?: RegistrationOptions) => transformations.values(o, this.config.specification, this.config.values, options)
+    values = (o: any, options?: RegistrationOptions) => transformations.values(o, this.config.specification, this.config.values, options)
 
 } 
 

@@ -1,7 +1,8 @@
 import { valueSymbol } from "./globals"
 import { transfer } from "./transfer"
+import { KeyType } from "./types"
 
-export const objectify = (key, value) => {
+export const objectify = (key: KeyType, value: any) => {
     const constructor = value?.constructor
 
     if (Array.isArray(value)) {
