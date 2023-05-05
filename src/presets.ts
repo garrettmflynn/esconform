@@ -10,18 +10,18 @@ export const objectify = (key: KeyType, value: any) => {
         value = []
         value = transfer(value, og)
     } 
-    else if (constructor) {
+    else if (!value) {
+        const og = value
+        value = Object.create(null)
+        Object.defineProperty(value, valueSymbol, { value: og })
+    }
+    
+    else if (constructor && typeof value !== 'object') {
         let og = value
         if (Array.isArray(value)) value = [...value]
-        else value = new constructor(value) // Try cloning other objects using their constructor
+        else value = new constructor(value) // Create an object if not already one
         value = transfer(value, og)
-    } else {
-        if (!value) {
-            const og = value
-            value = Object.create(null)
-            Object.defineProperty(value, valueSymbol, { value: og })
-        }
-    }
+    } 
 
     return value
 }

@@ -275,7 +275,7 @@ const onValueUpdate = (resolvedKey: KeyType, value: any, path: PathType, history
     if (updateIsObject && 'value' in update) console.error('Getting value from passed value', update) // TODO: May not actually need this...
     const resolved = (updateIsObject && 'value' in update) ? update.value : update
 
-    const isObject = resolved && resolved?.constructor?.name === 'Object'
+    const isObject = resolved && resolved?.constructor?.name === 'Object' // Check if a simple object
 
     const clone = (
         typeof resolved === 'symbol' ? resolved // Don't clone symbols
@@ -289,7 +289,9 @@ const onValueUpdate = (resolvedKey: KeyType, value: any, path: PathType, history
     const specIsObject = (specValue && typeof specValue === 'object')
 
 
+
     // Register properties. Only from the specification if not a simple object
+    if (typeof resolvedKey === 'symbol') return clone // Do not register properties on objects contained in symbol keys
     if (isObject || specIsObject) registerAllProperties(clone, specValue, funcs, options, path, [...history, historyObject], {  properties: isObject }) // Ensure history is full of unmutated objects
 
     return clone
