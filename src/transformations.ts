@@ -272,7 +272,6 @@ const onValueUpdate = (resolvedKey: KeyType, value: any, path: PathType, history
     }
 
     const updateIsObject = (update && typeof update  === 'object')
-    if (updateIsObject && 'value' in update) console.error('Getting value from passed value', update) // TODO: May not actually need this...
     const resolved = (updateIsObject && 'value' in update) ? update.value : update
 
     const isObject = resolved && resolved?.constructor?.name === 'Object' // Check if a simple object
