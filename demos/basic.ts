@@ -8,7 +8,7 @@ const object = {
 
     // Objects
     object: {
-        number: 'hi there' // Incorrect
+        // number: 'hi there' // Incorrect
     },
     array: [1, 2, 3],
     float32: new Float32Array([1,2,3]),
@@ -27,6 +27,7 @@ const object = {
 
 } as any
 
+
 const specification = {
     Number: true,
     String: true,
@@ -34,7 +35,8 @@ const specification = {
     
     // Commenting this breaks
     Object: {
-        Boolean: true
+        Boolean: true,
+        Number: 'hi there'
     },
 
     // after undefined has been set, the 'type' key will be transferred to the new value...

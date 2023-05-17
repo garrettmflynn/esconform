@@ -55,20 +55,31 @@ const registerAllProperties = (o: any, specObject: ArbitraryObject, funcs: Updat
         const registeredProperties = new Set(specKeys)
 
         const internalMetadata = { willUpdateOriginal }
+
+        let setters: Function[][] = []
         const register = (key: KeyType | number, historyArr = history) => {
             if (key === valueSymbol) return // Don't register values that are handled by the spec
             if (typeof key === 'string' && isNumeric(key)) return // Don't register numeric properties
             const registered = registerPropertyUpdate(key as KeyType, path, historyArr, acc, funcs, specObject, options, internalMetadata)
-            registered.forEach(key => {
+            registered.keys.forEach(key => {
                 specKeys.delete(key)
                 registeredProperties.add(key)
             })
+            setters.push(registered.setters)
         }
+        
 
         let toReturn = acc
 
         if (toIterate.properties !== false) properties.forEach((k) => register(k)) // Try to register properties provided by the user
         if (toIterate.specification !== false) specKeys.forEach((k) => register(k)) // Register extra specification properties
+
+
+        const lengths = setters.map(arr => arr.length)
+        const max = Math.max(...lengths)
+        for (let i = 0; i < max; i++) {
+            setters.forEach(arr => arr[i] ? arr[i]() : '')
+        }
 
         
         if (!(newKeySymbol in acc)) Object.defineProperty(acc, newKeySymbol, {
@@ -126,6 +137,7 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
     // if (!acc[propertiesRegistrySymbol]) Object.defineProperty(acc, propertiesRegistrySymbol, {value: {}, enumerable: false, configurable: false})
 
 
+    let propertySetters: Function[] = []
     let registered: KeyType[] = [] // A list of keys that have been registered
 
     const desc = parent ? {...Object.getOwnPropertyDescriptor(parent, key)} as PropertyDescriptor : {}
@@ -170,7 +182,8 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
                 })
             } else parentCopy[o.key] = o.value
             
-            registerPropertyUpdate(o.key, path, history, acc, funcs, specObject, options, {...internalMetadata, linked: true})
+            const result = registerPropertyUpdate(o.key, path, history, acc, funcs, specObject, options, {...internalMetadata, linked: true})
+            propertySetters.push(...result.setters)
         }
     }
 
@@ -186,72 +199,84 @@ const registerPropertyUpdate = (key: KeyType, path:PathType, history: HistoryTyp
     const silence = (isObject && 'silence' in update) ? update.silence : (!hasSpecValue(_update, specObject, key) || (_update == undefined || _update === removeSymbol || (type !== 'string' && type !== 'symbol' && (type === 'object' && (!(_update instanceof String) && !(_update instanceof Number))))))
     const resolvedKey = (silence) ? key : _update  as KeyType  
 
+    // If this is a non-configurable property, then let it slide...
     if (silence && !links) {
-        delete acc[key]
-        return registered
-    } else registered.push(resolvedKey)
+        try {
+            delete acc[key]
+            return { keys: registered, setters: propertySetters }
+        } catch {}
+    }
+
+    registered.push(resolvedKey)
 
      const existingDesc = Object.getOwnPropertyDescriptor(acc, resolvedKey) ?? {}
      const exists = existingDesc.set && existingDesc.configurable !== true
-     if (exists) acc[resolvedKey] = parent[key] // If the property is already defined, set the value to the original value
+     if (exists) {
+        const f = () => acc[resolvedKey] = parent[key]
+        // f()
+        propertySetters.push(f) // If the property is already defined, set the value to the original value
+    }
     else {
 
-        // Set a hidden setter so that updates to the property conform to the model
-        function setter(value: any) {
+            // Set a hidden setter so that updates to the property conform to the model
+            function setter(value: any) {
 
-            // Preprocessing values received from the specification
-            // NOTE: Do not set non-standard objects with metadata...
-            if (value && typeof value === 'object') {
-                    // if (!(fromSpecSymbol in value)) console.warn('May be processing a value that has metadata on it...')
-                    // else console.error('FROM SPEC')
-                    // delete value[fromSpecSymbol]
-                    if (valueSymbol in value) value =  value[valueSymbol] // If the value is a model, get the actual value
-                     if (value && typeof value.valueOf === 'function') value = value.valueOf() // If the value is a primitive, get the actual value
-                // } else console.error('Not in spec', value, valueSymbol in value, value[valueSymbol])
+                // Preprocessing values received from the specification
+                // NOTE: Do not set non-standard objects with metadata...
+                if (value && typeof value === 'object') {
+                        // if (!(fromSpecSymbol in value)) console.warn('May be processing a value that has metadata on it...')
+                        // else console.error('FROM SPEC')
+                        // delete value[fromSpecSymbol]
+                        if (valueSymbol in value) value =  value[valueSymbol] // If the value is a model, get the actual value
+                        if (value && typeof value.valueOf === 'function') value = value.valueOf() // If the value is a primitive, get the actual value
+                    // } else console.error('Not in spec', value, valueSymbol in value, value[valueSymbol])
+                }
+
+                // Trigger value update response
+                // acc[propertiesRegistrySymbol][resolvedKey] = 
+                resolved = onValueUpdate(resolvedKey, value, updatedPath, history, funcs, specObject, options, internalMetadata)
+                const toReturn = (valueSymbol in resolved) ? resolved[valueSymbol] : resolved // return actual value (null / undefined)
+                // console.warn('Has been set', resolvedKey, toReturn)
+                return toReturn
             }
 
-            // Trigger value update response
-            // acc[propertiesRegistrySymbol][resolvedKey] = 
-            resolved = onValueUpdate(resolvedKey, value, updatedPath, history, funcs, specObject, options, internalMetadata)
-            const toReturn = (valueSymbol in resolved) ? resolved[valueSymbol] : resolved // return actual value (null / undefined)
-            // console.warn('Has been set', resolvedKey, toReturn)
-            return toReturn
-        }
+            // Basic getter for the property
+            function getter () {
 
-        // Basic getter for the property
-        function getter () {
+                let toReturn;
+                if (silence) return
+                else if (resolved === unresolved || internalMetadata.linked) {
+                    const value = mutate ? (desc.get ? desc.get.call(parent) : desc.value) : (parent ? parent[key] : undefined) //?? getSpecValue(resolvedKey, specObject, key) // Get original from specification as a backup
+                    toReturn = isPromise(value) ? value.then(setter) : setter(value)
+                }
+                else toReturn = (valueSymbol in resolved) ? resolved[valueSymbol] : resolved // return actual value (null / undefined)
 
-            let toReturn;
-            if (silence) return
-            else if (resolved === unresolved || internalMetadata.linked) {
-                const value = mutate ? (desc.get ? desc.get.call(parent) : desc.value) : (parent ? parent[key] : undefined) //?? getSpecValue(resolvedKey, specObject, key) // Get original from specification as a backup
-                toReturn = isPromise(value) ? value.then(setter) : setter(value)
+                return toReturn
             }
-            else toReturn = (valueSymbol in resolved) ? resolved[valueSymbol] : resolved // return actual value (null / undefined)
 
-            return toReturn
+            // Enhanced getter and setter based on existing property descriptor
+            if ((!mutate && Object.getOwnPropertyDescriptor(acc, resolvedKey)?.configurable !== false) || desc?.configurable !== false) {
+                Object.defineProperty(acc, resolvedKey, { 
+                    get: getter,  // Handle promises
+                    set: desc.set ? (value) => {
+                        (desc.set as (v: any) => void)(value);
+                        return setter(value);
+                    } : setter,
+                    enumerable: silence ? false : enumerable,
+                    configurable: desc.configurable // Pass on configurability
+                })
+            }
         }
-
-        // Enhanced getter and setter based on existing property descriptor
-        if ((!mutate && Object.getOwnPropertyDescriptor(acc, resolvedKey)?.configurable !== false) || desc?.configurable !== false) {
-            Object.defineProperty(acc, resolvedKey, { 
-                get: getter,  // Handle promises
-                set: desc.set ? (value) => {
-                    (desc.set as (v: any) => void)(value);
-                    return setter(value);
-                } : setter,
-                enumerable: silence ? false : enumerable,
-                configurable: desc.configurable // Pass on configurability
-            })
-        }
-    }
 
     // acc[propertiesRegistrySymbol][resolvedKey] = resolved // Store the resolved value
 
     // Delete old key
     if (key !== resolvedKey) delete acc[key] 
 
-    return registered // return an array of registered keys
+    return {
+        keys: registered, // return an array of registered keys
+        setters: propertySetters
+    }
 }
 
 const onValueUpdate = (resolvedKey: KeyType, value: any, path: PathType, history: HistoryType, funcs: UpdateFunctions, specObject: any, options: RegistrationOptions, internalMetadata: InternalMetadata) => {
